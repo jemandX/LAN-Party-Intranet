@@ -499,10 +499,13 @@
           sound_file: f.sound_file.value
         };
         if (form.id === "registerForm") data.username = f.username.value;
-        const result = await postJson("/api/sound/test", data);
+        
+        // Sound im Browser direkt testen, wenn eine Datei gewählt ist
         if (data.sound_file) {
           new Audio('/sounds/' + data.sound_file).play().catch(() => {});
         }
+
+        const result = await postJson("/api/sound/test", data);
         showMessage(result.message || "Sound wurde gestartet.");
       } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
     });
