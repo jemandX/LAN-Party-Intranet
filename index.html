@@ -40,6 +40,14 @@
     display: flex; justify-content: space-between; align-items: center;
     gap: 1rem; flex-wrap: wrap; font-weight: 600;
   }
+  .accountbar { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
+  .auth-panel { max-width: 34rem; margin: 1rem 0 0 auto; padding: 1rem; background: var(--paper); border: 2px solid var(--line); border-radius: 6px; }
+  .auth-panel[hidden], [hidden] { display: none !important; }
+  .auth-panel form { display: grid; gap: .6rem; }
+  .auth-panel label { display: grid; gap: .2rem; font-weight: 600; }
+  .auth-panel input, .auth-panel select { width: 100%; padding: .35rem; border: 1px solid #c3cddb; border-radius: 4px; }
+  .auth-tabs, .auth-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+  .form-error { color: #9d2018; font-weight: 600; min-height: 1.5em; }
   .clock { font-variant-numeric: tabular-nums; font-size: 1.1rem; }
   .badge {
     border: 2px solid var(--line); padding: .1rem .6rem; border-radius: 999px;
@@ -119,6 +127,39 @@
   <div class="topline">
     <span class="clock" id="clock">--:--:--</span>
     <span class="badge" id="status">Verbinde …</span>
+    <div class="accountbar">
+      <span id="signedIn" hidden></span>
+      <button type="button" class="ghost" id="arrive" hidden>Ich bin da</button>
+      <button type="button" class="ghost" id="openSettings" hidden>Einstellungen</button>
+      <button type="button" class="ghost" id="logout" hidden>Abmelden</button>
+      <button type="button" id="openAuth">Anmelden / Registrieren</button>
+    </div>
+  </div>
+  <p class="hint" id="authHint">Nur lesender Zugriff. Melde dich an, um Punkte und Hotdogs zu ändern.</p>
+  <div class="auth-panel" id="authPanel" hidden>
+    <div class="topline"><strong id="authTitle">Anmelden</strong><button type="button" class="ghost" id="closeAuth">Schließen</button></div>
+    <div class="auth-tabs" id="authTabs">
+      <button type="button" class="ghost" data-auth-tab="login">Anmelden</button>
+      <button type="button" class="ghost" data-auth-tab="register">Registrieren</button>
+    </div>
+    <form id="loginForm">
+      <label>Benutzername<input type="text" name="username" minlength="2" maxlength="20" autocomplete="username" required></label>
+      <label>Passwort<input type="password" name="password" minlength="6" autocomplete="current-password" required></label>
+      <button type="submit">Anmelden</button>
+    </form>
+    <form id="registerForm" hidden>
+      <label>Benutzername<input type="text" name="username" minlength="2" maxlength="20" autocomplete="username" required></label>
+      <label>Passwort (mindestens 6 Zeichen)<input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
+      <label>WAV-Sound<select name="sound_file" class="sound-file"></select></label>
+      <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Konto erstellen</button></div>
+    </form>
+    <form id="settingsForm" hidden>
+      <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
+      <label>WAV-Sound<select name="sound_file" class="sound-file"></select></label>
+      <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Einstellungen speichern</button></div>
+    </form>
+    <p class="form-error" id="authMessage" role="status" aria-live="polite"></p>
   </div>
   <p class="now-label">Gerade läuft</p>
   <h1 class="now-title" id="nowTitle">…</h1>
@@ -197,6 +238,8 @@
   let online = false;
   let saveTimer = null;
   let pendingSave = false;
+  let currentAccount = null;
+  let sounds = [];
 
   /* ---------- Daten ---------- */
 
@@ -212,6 +255,43 @@
       while (p.scores.length < s.rounds) p.scores.push(0);
     });
     return s;
+  }
+
+  function showMessage(message) {
+    $("authMessage").textContent = message;
+    if (message) $("authHint").textContent = message;
+    else updateAccountUI();
+  }
+
+  function updateAccountUI() {
+    const loggedIn = !!currentAccount;
+    $("signedIn").hidden = !loggedIn;
+    $("signedIn").textContent = loggedIn ? `Angemeldet als ${currentAccount.username}${currentAccount.role === "admin" ? " (Admin)" : ""}` : "";
+    $("arrive").hidden = !loggedIn;
+    $("openSettings").hidden = !loggedIn;
+    $("logout").hidden = !loggedIn;
+    $("openAuth").hidden = loggedIn;
+    $("authHint").textContent = loggedIn
+      ? (currentAccount.role === "admin" ? "Du bist als Admin angemeldet." : "Du kannst Punktestände und Hotdogs ändern.")
+      : "Nur lesender Zugriff. Melde dich an, um Punkte und Hotdogs zu ändern.";
+    updatePermissions();
+  }
+
+  function updatePermissions() {
+    const loggedIn = !!currentAccount;
+    const admin = loggedIn && currentAccount.role === "admin";
+    $("schedule").querySelectorAll("input, button").forEach((el) => { el.disabled = !admin; });
+    $("addItem").disabled = !admin;
+    $("info").disabled = !admin;
+    $("dogMinus").disabled = !loggedIn;
+    $("dogPlus").disabled = !loggedIn;
+    $("addPlayer").disabled = !admin;
+    $("addRound").disabled = !admin;
+    $("removeRound").disabled = !admin;
+    $("resetScores").disabled = !admin;
+    $("scores").querySelectorAll("input, button").forEach((el) => {
+      el.disabled = !loggedIn || (el.dataset.f === "name" || el.hasAttribute("data-delp")) && !admin;
+    });
   }
 
   function setOnline(v) {
@@ -250,6 +330,16 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(state)
         });
+        if (r.status === 401 || r.status === 403) {
+          const error = await r.json().catch(() => ({}));
+          if (r.status === 401) {
+            currentAccount = null;
+            updateAccountUI();
+          }
+          showMessage(error.error || "Du darfst diese Änderung nicht speichern.");
+          pendingSave = false;
+          return;
+        }
         if (!r.ok) throw new Error("HTTP " + r.status);
         const s = await r.json();
         state.rev = s.rev;
@@ -267,6 +357,7 @@
 
   async function poll() {
     if (isEditing()) return;
+    await refreshAccount();
     const s = await loadState();
     if (!state || s.rev !== state.rev) {
       state = s;
@@ -285,6 +376,7 @@
        </li>`).join("");
     sortScheduleDom();
     tick();
+    updatePermissions();
   }
 
   // Sortiert nur die Zeilen im DOM, ohne Eingabefelder neu zu bauen (Fokus bleibt erhalten).
@@ -381,6 +473,7 @@
     h += "</tbody>";
     $("scores").innerHTML = h;
     rankDom();
+    updatePermissions();
   }
 
   // Ränge neu berechnen und Zeilen umsortieren, ohne die Eingabefelder zu ersetzen.
@@ -453,6 +546,159 @@
 
   $("info").addEventListener("input", (e) => { state.info = e.target.value; queueSave(); });
 
+  /* ---------- Konten & Sounds ---------- */
+
+  function authView(view) {
+    const settings = view === "settings";
+    $("authPanel").hidden = false;
+    $("authTabs").hidden = settings;
+    $("loginForm").hidden = view !== "login";
+    $("registerForm").hidden = view !== "register";
+    $("settingsForm").hidden = !settings;
+    $("authTitle").textContent = settings ? "Sound-Einstellungen" : view === "register" ? "Registrieren" : "Anmelden";
+    showMessage("");
+    if (settings && currentAccount) {
+      $("settingsForm").elements.sound_mode.value = currentAccount.sound_mode || "name";
+      $("settingsForm").elements.sound_file.value = currentAccount.sound_file || "";
+      $("settingsForm").elements.sound_mode.dispatchEvent(new Event("change"));
+    }
+  }
+
+  function populateSoundMenus() {
+    document.querySelectorAll(".sound-file").forEach((select) => {
+      select.replaceChildren();
+      const fallback = document.createElement("option");
+      fallback.value = "";
+      fallback.textContent = "Signalton-Fallback (keine WAV-Datei)";
+      select.appendChild(fallback);
+      sounds.forEach((filename) => {
+        const option = document.createElement("option");
+        option.value = filename;
+        option.textContent = filename;
+        select.appendChild(option);
+      });
+    });
+    document.querySelectorAll(".sound-mode").forEach((select) => {
+      select.addEventListener("change", () => {
+        const fileSelect = select.closest("form").querySelector(".sound-file");
+        fileSelect.disabled = select.value === "name";
+      });
+      select.dispatchEvent(new Event("change"));
+    });
+  }
+
+  async function refreshAccount() {
+    try {
+      const response = await fetch("/api/me", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      currentAccount = data.user || null;
+      updateAccountUI();
+    } catch (e) { /* Bei Offline-Betrieb bleibt der lokale Stand erhalten. */ }
+  }
+
+  async function loadSounds() {
+    try {
+      const response = await fetch("/api/sounds", { cache: "no-store" });
+      if (response.ok) sounds = (await response.json()).sounds || [];
+    } catch (e) { sounds = []; }
+    populateSoundMenus();
+  }
+
+  async function postJson(path, data) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Die Anfrage ist fehlgeschlagen.");
+    return result;
+  }
+
+  function formSoundData(form) {
+    return { sound_mode: form.elements.sound_mode.value, sound_file: form.elements.sound_file.value };
+  }
+
+  $("openAuth").addEventListener("click", () => authView("login"));
+  $("openSettings").addEventListener("click", () => authView("settings"));
+  $("closeAuth").addEventListener("click", () => { $("authPanel").hidden = true; });
+  document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+    button.addEventListener("click", () => authView(button.dataset.authTab));
+  });
+
+  $("loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const result = await postJson("/api/login", {
+        username: form.elements.username.value,
+        password: form.elements.password.value
+      });
+      currentAccount = result.user;
+      form.reset();
+      $("authPanel").hidden = true;
+      showMessage("");
+      updateAccountUI();
+    } catch (error) { showMessage(error.message || "Anmeldung fehlgeschlagen."); }
+  });
+
+  $("registerForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const result = await postJson("/api/register", {
+        username: form.elements.username.value,
+        password: form.elements.password.value,
+        ...formSoundData(form)
+      });
+      currentAccount = result.user;
+      form.reset();
+      $("authPanel").hidden = true;
+      showMessage("");
+      updateAccountUI();
+      await poll();
+    } catch (error) { showMessage(error.message || "Registrierung fehlgeschlagen."); }
+  });
+
+  $("settingsForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await postJson("/api/me/sound", formSoundData(event.currentTarget));
+      currentAccount = result.user;
+      showMessage("Sound-Einstellungen gespeichert.");
+      updateAccountUI();
+    } catch (error) { showMessage(error.message || "Einstellungen konnten nicht gespeichert werden."); }
+  });
+
+  document.querySelectorAll(".sound-test").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const form = button.closest("form");
+      try {
+        const data = formSoundData(form);
+        if (form.id === "registerForm") data.username = form.elements.username.value;
+        const result = await postJson("/api/sound/test", data);
+        showMessage(result.message || "Sound wurde gestartet.");
+      } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+    });
+  });
+
+  $("arrive").addEventListener("click", async () => {
+    try {
+      const response = await fetch("/api/sound/arrive", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Sound konnte nicht gestartet werden.");
+      showMessage(result.message || "Du bist angemeldet.");
+    } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+  });
+
+  $("logout").addEventListener("click", async () => {
+    try { await fetch("/api/logout", { method: "POST" }); } catch (e) { /* Sitzung endet spätestens beim Server-Neustart. */ }
+    currentAccount = null;
+    $("authPanel").hidden = true;
+    updateAccountUI();
+  });
+
   /* ---------- Start ---------- */
 
   function renderAll() {
@@ -465,6 +711,8 @@
 
   (async () => {
     state = await loadState();
+    await refreshAccount();
+    await loadSounds();
     renderAll();
     setInterval(tick, 1000);
     setInterval(poll, 3000);

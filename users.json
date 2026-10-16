@@ -1,0 +1,18 @@
+{
+  "test1": {
+    "username": "test1",
+    "role": "admin",
+    "salt": "0b009512490dd264a2228efa2a7ac337",
+    "password_hash": "20b24113462941e5936f80d3a81c2d5256ddcf326ee7b5f94740d7f1742c102c6941322f949c4d4b752f6263f3c901ff40ca58da271db694a992c5143ac4f2c6",
+    "sound_mode": "both",
+    "sound_file": ""
+  },
+  "scdhniedl": {
+    "username": "scdhniedl",
+    "role": "user",
+    "salt": "e8f9efb793bb12bdccd4f259dc0ffb06",
+    "password_hash": "745cbe86bf9fadf68e0d11be8183d6983a0501382212abfcf08153a6c92416352e4cffacdd8527f9ac73f417a132f0c84fb272a93fa1e2f7f8f996d6f91be38b",
+    "sound_mode": "name",
+    "sound_file": ""
+  }
+}

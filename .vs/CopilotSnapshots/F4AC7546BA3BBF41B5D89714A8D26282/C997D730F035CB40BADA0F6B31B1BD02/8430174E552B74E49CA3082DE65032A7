@@ -1,0 +1,720 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAN-Party</title>
+<style>
+  :root {
+    --bg: #eef3f8;
+    --paper: #ffffff;
+    --ink: #12233d;
+    --muted: #5b6b82;
+    --mustard: #f5b700;
+    --ketchup: #d33a2c;
+    --line: #12233d;
+    --ok: #1f7a4d;
+    --display: "Arial Black", "Segoe UI Black", "Helvetica Neue", system-ui, sans-serif;
+    --body: "Segoe UI Variable", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 1rem; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--ketchup); outline-offset: 2px; }
+
+  /* Jetzt-Band: das Erste, was man sieht */
+  .now {
+    background: var(--mustard);
+    border-bottom: 3px solid var(--line);
+    padding: 1.25rem clamp(1rem, 4vw, 3rem) 1.75rem;
+  }
+  .topline {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem; flex-wrap: wrap; font-weight: 600;
+  }
+  .accountbar { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; }
+  .auth-panel { max-width: 34rem; margin: 1rem 0 0 auto; padding: 1rem; background: var(--paper); border: 2px solid var(--line); border-radius: 6px; }
+  .auth-panel[hidden], [hidden] { display: none !important; }
+  .auth-panel form { display: grid; gap: .6rem; }
+  .auth-panel label { display: grid; gap: .2rem; font-weight: 600; }
+  .auth-panel input, .auth-panel select { width: 100%; padding: .35rem; border: 1px solid #c3cddb; border-radius: 4px; }
+  .auth-tabs, .auth-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+  .form-error { color: #9d2018; font-weight: 600; min-height: 1.5em; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 1.1rem; }
+  .badge {
+    border: 2px solid var(--line); padding: .1rem .6rem; border-radius: 999px;
+    background: var(--paper); font-size: .875rem; font-weight: 600;
+  }
+  .badge.live::before { content: "● "; color: var(--ok); }
+  .badge.local::before { content: "● "; color: var(--ketchup); }
+  .now-label { margin: 1.5rem 0 0; font-weight: 600; }
+  .now-title {
+    font-family: var(--display);
+    font-size: clamp(2.25rem, 9vw, 5.5rem);
+    line-height: 1.02; margin: .15rem 0 .5rem;
+    overflow-wrap: anywhere;
+  }
+  .countdown { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+
+  main {
+    display: grid; gap: 0;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    max-width: 78rem; margin: 0 auto;
+  }
+  section { padding: 1.5rem clamp(1rem, 4vw, 3rem); border-bottom: 2px solid var(--line); }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-family: var(--display); font-size: 1.5rem; margin: 0 0 1rem; line-height: 1.15; }
+
+  /* Programm */
+  ul.schedule { list-style: none; margin: 0; padding: 0; }
+  .schedule li {
+    display: grid; grid-template-columns: 7rem 1fr auto; gap: .5rem; align-items: center;
+    padding: .4rem .5rem; border-left: 6px solid transparent;
+  }
+  .schedule li.past { opacity: .5; }
+  .schedule li.current { border-left-color: var(--ketchup); background: #fff3cf; }
+  .schedule li.next { border-left-color: var(--mustard); }
+  .schedule input { width: 100%; }
+
+  input[type="text"], input[type="time"], input[type="number"], textarea {
+    background: var(--paper); border: 2px solid transparent; border-bottom-color: #c3cddb;
+    border-radius: 4px; padding: .3rem .4rem; min-width: 0;
+  }
+  input:hover, textarea:hover { border-color: #c3cddb; }
+  input:focus, textarea:focus { border-color: var(--ink); }
+  textarea { width: 100%; min-height: 9rem; resize: vertical; border-color: #c3cddb; }
+
+  button {
+    background: var(--ink); color: #fff; border: 2px solid var(--ink);
+    border-radius: 4px; padding: .35rem .8rem; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #24406b; }
+  button.ghost { background: transparent; color: var(--ink); }
+  button.ghost:hover { background: #dde6f1; }
+  button.x { background: transparent; color: var(--muted); border-color: transparent; padding: .1rem .5rem; }
+  button.x:hover { color: var(--ketchup); background: transparent; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+
+  /* Punktestand */
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 28rem; }
+  th, td { padding: .35rem .4rem; text-align: left; border-bottom: 1px solid #c3cddb; }
+  th { font-weight: 700; border-bottom: 2px solid var(--line); }
+  td.rank { font-family: var(--display); width: 2.5rem; }
+  td.total { font-family: var(--display); font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+  tr.first td.rank, tr.first td.total { color: var(--ketchup); }
+  td input[type="number"] { width: 4.5rem; }
+  td input[type="text"] { width: 100%; min-width: 7rem; }
+
+  /* Hotdogs */
+  .dogs { display: flex; align-items: center; gap: 1rem; }
+  .dogs .count { font-family: var(--display); font-size: 4rem; line-height: 1; min-width: 4rem; font-variant-numeric: tabular-nums; }
+  .dogs button { font-size: 1.5rem; width: 3rem; height: 3rem; padding: 0; }
+  .hint { color: var(--muted); font-size: .9rem; margin: .75rem 0 0; }
+</style>
+</head>
+<body>
+
+<div class="now">
+  <div class="topline">
+    <span class="clock" id="clock">--:--:--</span>
+    <span class="badge" id="status">Verbinde …</span>
+    <div class="accountbar">
+      <span id="signedIn" hidden></span>
+      <button type="button" class="ghost" id="arrive" hidden>Ich bin da</button>
+      <button type="button" class="ghost" id="openSettings" hidden>Einstellungen</button>
+      <button type="button" class="ghost" id="logout" hidden>Abmelden</button>
+      <button type="button" id="openAuth">Anmelden / Registrieren</button>
+    </div>
+  </div>
+  <p class="hint" id="authHint">Nur lesender Zugriff. Melde dich an, um Punkte und Hotdogs zu ändern.</p>
+  <div class="auth-panel" id="authPanel" hidden>
+    <div class="topline"><strong id="authTitle">Anmelden</strong><button type="button" class="ghost" id="closeAuth">Schließen</button></div>
+    <div class="auth-tabs" id="authTabs">
+      <button type="button" class="ghost" data-auth-tab="login">Anmelden</button>
+      <button type="button" class="ghost" data-auth-tab="register">Registrieren</button>
+    </div>
+    <form id="loginForm">
+      <label>Benutzername<input type="text" name="username" minlength="2" maxlength="20" autocomplete="username" required></label>
+      <label>Passwort<input type="password" name="password" minlength="6" autocomplete="current-password" required></label>
+      <button type="submit">Anmelden</button>
+    </form>
+    <form id="registerForm" hidden>
+      <label>Benutzername<input type="text" name="username" minlength="2" maxlength="20" autocomplete="username" required></label>
+      <label>Passwort (mindestens 6 Zeichen)<input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
+      <label>WAV-Sound<select name="sound_file" class="sound-file"></select></label>
+      <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Konto erstellen</button></div>
+    </form>
+    <form id="settingsForm" hidden>
+      <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
+      <label>WAV-Sound<select name="sound_file" class="sound-file"></select></label>
+      <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Einstellungen speichern</button></div>
+    </form>
+    <p class="form-error" id="authMessage" role="status" aria-live="polite"></p>
+  </div>
+  <p class="now-label">Gerade läuft</p>
+  <h1 class="now-title" id="nowTitle">…</h1>
+  <div class="countdown" id="countdown"></div>
+</div>
+
+<main>
+  <section>
+    <h2>Programm</h2>
+    <ul class="schedule" id="schedule"></ul>
+    <div class="actions">
+      <button type="button" id="addItem">Programmpunkt hinzufügen</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Hotdogs</h2>
+    <div class="dogs">
+      <button type="button" id="dogMinus" aria-label="Einen Hotdog weniger">−</button>
+      <span class="count" id="dogCount" aria-live="polite">0</span>
+      <button type="button" id="dogPlus" aria-label="Einen Hotdog mehr">+</button>
+    </div>
+    <p class="hint">Zählt alle gegessenen Hotdogs. Alle sehen denselben Stand.</p>
+  </section>
+
+  <section class="wide">
+    <h2>Punktestand</h2>
+    <div class="scroll"><table id="scores"></table></div>
+    <div class="actions">
+      <button type="button" id="addPlayer">Spieler hinzufügen</button>
+      <button type="button" class="ghost" id="addRound">Runde hinzufügen</button>
+      <button type="button" class="ghost" id="removeRound">Letzte Runde entfernen</button>
+      <button type="button" class="ghost" id="resetScores">Punkte zurücksetzen</button>
+    </div>
+  </section>
+
+  <section class="wide">
+    <h2>Infos</h2>
+    <textarea id="info" aria-label="Infos für alle"></textarea>
+    <p class="hint">Hier stehen WLAN-Passwort, Server-Adressen und Regeln. Änderungen sehen alle nach wenigen Sekunden.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const API = "/api/state";
+  const LS_KEY = "lanparty-state";
+  const DEFAULT = {
+    rev: 0,
+    schedule: [
+      { time: "12:00", title: "Aufwärmen (freies Spiel)" },
+      { time: "13:00", title: "Hotdog-Pause" },
+      { time: "14:00", title: "Runde 1" },
+      { time: "15:30", title: "Pause" },
+      { time: "16:00", title: "Runde 2" },
+      { time: "17:30", title: "Finale" }
+    ],
+    rounds: 2,
+    players: [
+      { name: "Spieler 1", scores: [0, 0] },
+      { name: "Spieler 2", scores: [0, 0] },
+      { name: "Spieler 3", scores: [0, 0] }
+    ],
+    hotdogs: 0,
+    info: "WLAN-Passwort, Server-IPs und Regeln hier eintragen."
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const num = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
+
+  let state = null;
+  let online = false;
+  let saveTimer = null;
+  let pendingSave = false;
+  let currentAccount = null;
+  let sounds = [];
+
+  /* ---------- Daten ---------- */
+
+  function normalize(s) {
+    s = s && typeof s === "object" ? s : JSON.parse(JSON.stringify(DEFAULT));
+    s.schedule = Array.isArray(s.schedule) ? s.schedule : [];
+    s.players = Array.isArray(s.players) ? s.players : [];
+    s.rounds = Math.max(1, num(s.rounds) || 1);
+    s.hotdogs = Math.max(0, num(s.hotdogs));
+    s.info = typeof s.info === "string" ? s.info : "";
+    s.players.forEach((p) => {
+      p.scores = Array.isArray(p.scores) ? p.scores.map(num) : [];
+      while (p.scores.length < s.rounds) p.scores.push(0);
+    });
+    return s;
+  }
+
+  function showMessage(message) {
+    $("authMessage").textContent = message;
+    if (message) $("authHint").textContent = message;
+    else updateAccountUI();
+  }
+
+  function updateAccountUI() {
+    const loggedIn = !!currentAccount;
+    $("signedIn").hidden = !loggedIn;
+    $("signedIn").textContent = loggedIn ? `Angemeldet als ${currentAccount.username}${currentAccount.role === "admin" ? " (Admin)" : ""}` : "";
+    $("arrive").hidden = !loggedIn;
+    $("openSettings").hidden = !loggedIn;
+    $("logout").hidden = !loggedIn;
+    $("openAuth").hidden = loggedIn;
+    $("authHint").textContent = loggedIn
+      ? (currentAccount.role === "admin" ? "Du bist als Admin angemeldet." : "Du kannst Punktestände und Hotdogs ändern.")
+      : "Nur lesender Zugriff. Melde dich an, um Punkte und Hotdogs zu ändern.";
+    updatePermissions();
+  }
+
+  function updatePermissions() {
+    const loggedIn = !!currentAccount;
+    const admin = loggedIn && currentAccount.role === "admin";
+    $("schedule").querySelectorAll("input, button").forEach((el) => { el.disabled = !admin; });
+    $("addItem").disabled = !admin;
+    $("info").disabled = !admin;
+    $("dogMinus").disabled = !loggedIn;
+    $("dogPlus").disabled = !loggedIn;
+    $("addPlayer").disabled = !admin;
+    $("addRound").disabled = !admin;
+    $("removeRound").disabled = !admin;
+    $("resetScores").disabled = !admin;
+    $("scores").querySelectorAll("input, button").forEach((el) => {
+      el.disabled = !loggedIn || (el.dataset.f === "name" || el.hasAttribute("data-delp")) && !admin;
+    });
+  }
+
+  function setOnline(v) {
+    online = v;
+    const el = $("status");
+    el.textContent = v ? "Live-Sync" : "Nur lokal (Server nicht erreichbar)";
+    el.className = "badge " + (v ? "live" : "local");
+  }
+
+  async function loadState() {
+    try {
+      const r = await fetch(API, { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const s = await r.json();
+      setOnline(true);
+      return normalize(s);
+    } catch (e) {
+      setOnline(false);
+      try { return normalize(JSON.parse(localStorage.getItem(LS_KEY))); } catch (e2) { /* ignorieren */ }
+      return normalize(null);
+    }
+  }
+
+  function queueSave() {
+    pendingSave = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 300);
+  }
+
+  async function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* ignorieren */ }
+    if (online) {
+      try {
+        const r = await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(state)
+        });
+        if (r.status === 401 || r.status === 403) {
+          const error = await r.json().catch(() => ({}));
+          if (r.status === 401) {
+            currentAccount = null;
+            updateAccountUI();
+          }
+          showMessage(error.error || "Du darfst diese Änderung nicht speichern.");
+          pendingSave = false;
+          return;
+        }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const s = await r.json();
+        state.rev = s.rev;
+      } catch (e) {
+        setOnline(false);
+      }
+    }
+    pendingSave = false;
+  }
+
+  function isEditing() {
+    const a = document.activeElement;
+    return pendingSave || (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"));
+  }
+
+  async function poll() {
+    if (isEditing()) return;
+    await refreshAccount();
+    const s = await loadState();
+    if (!state || s.rev !== state.rev) {
+      state = s;
+      renderAll();
+    }
+  }
+
+  /* ---------- Programm ---------- */
+
+  function renderSchedule() {
+    $("schedule").innerHTML = state.schedule.map((it, i) =>
+      `<li data-i="${i}">
+         <input type="time" value="${esc(it.time)}" data-f="time" aria-label="Uhrzeit">
+         <input type="text" value="${esc(it.title)}" data-f="title" aria-label="Programmpunkt" maxlength="80">
+         <button type="button" class="x" data-del="${i}" aria-label="Programmpunkt entfernen">✕</button>
+       </li>`).join("");
+    sortScheduleDom();
+    tick();
+    updatePermissions();
+  }
+
+  // Sortiert nur die Zeilen im DOM, ohne Eingabefelder neu zu bauen (Fokus bleibt erhalten).
+  function sortScheduleDom() {
+    const ul = $("schedule");
+    [...ul.children]
+      .sort((a, b) => a.querySelector('[data-f="time"]').value.localeCompare(b.querySelector('[data-f="time"]').value))
+      .forEach((li) => ul.appendChild(li));
+  }
+
+  $("schedule").addEventListener("input", (e) => {
+    const li = e.target.closest("li");
+    if (!li || !e.target.dataset.f) return;
+    state.schedule[+li.dataset.i][e.target.dataset.f] = e.target.value;
+    queueSave();
+  });
+  $("schedule").addEventListener("change", (e) => {
+    if (e.target.dataset.f === "time") { sortScheduleDom(); tick(); }
+  });
+  $("schedule").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-del]");
+    if (!b) return;
+    state.schedule.splice(+b.dataset.del, 1);
+    renderSchedule();
+    queueSave();
+  });
+  $("addItem").addEventListener("click", () => {
+    const last = state.schedule.map((x) => x.time).filter(Boolean).sort().pop() || "12:00";
+    state.schedule.push({ time: last, title: "Neuer Programmpunkt" });
+    renderSchedule();
+    queueSave();
+    const rows = $("schedule").querySelectorAll('[data-f="title"]');
+    // Zeile mit dem neuen Eintrag fokussieren
+    const target = [...rows].reverse().find((r) => r.value === "Neuer Programmpunkt");
+    if (target) { target.focus(); target.select(); }
+  });
+
+  /* ---------- Jetzt-Band ---------- */
+
+  const toMin = (t) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t || "");
+    return m ? +m[1] * 60 + +m[2] : null;
+  };
+
+  function tick() {
+    const now = new Date();
+    $("clock").textContent = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    if (!state) return;
+
+    const secsNow = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const items = state.schedule
+      .map((it, i) => ({ i, m: toMin(it.time), title: it.title }))
+      .filter((x) => x.m !== null)
+      .sort((a, b) => a.m - b.m);
+    const cur = [...items].reverse().find((x) => x.m * 60 <= secsNow);
+    const next = items.find((x) => x.m * 60 > secsNow);
+
+    document.querySelectorAll("#schedule li").forEach((li) => {
+      const i = +li.dataset.i;
+      const m = toMin(li.querySelector('[data-f="time"]').value);
+      li.classList.toggle("current", !!cur && cur.i === i);
+      li.classList.toggle("next", !!next && next.i === i);
+      li.classList.toggle("past", m !== null && m * 60 <= secsNow && !(cur && cur.i === i));
+    });
+
+    $("nowTitle").textContent = cur ? cur.title || "(ohne Titel)" : (items.length ? "Gleich geht's los" : "Noch kein Programm");
+    if (next) {
+      const s = next.m * 60 - secsNow;
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      const t = (h ? h + " h " : "") + m + " min " + String(sec).padStart(2, "0") + " s";
+      $("countdown").textContent = `Danach: ${next.title || "(ohne Titel)"} in ${t}`;
+    } else {
+      $("countdown").textContent = items.length ? "Das war das Programm für heute." : "";
+    }
+  }
+
+  /* ---------- Punktestand ---------- */
+
+  const total = (p) => p.scores.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  function renderScores() {
+    let h = "<thead><tr><th>Platz</th><th>Name</th>";
+    for (let r = 0; r < state.rounds; r++) h += `<th>Runde ${r + 1}</th>`;
+    h += "<th>Gesamt</th><th></th></tr></thead><tbody>";
+    state.players.forEach((p, pi) => {
+      h += `<tr data-p="${pi}"><td class="rank"></td>
+        <td><input type="text" value="${esc(p.name)}" data-f="name" aria-label="Name" maxlength="30"></td>`;
+      for (let r = 0; r < state.rounds; r++) {
+        h += `<td><input type="number" value="${num(p.scores[r])}" data-r="${r}" aria-label="Punkte Runde ${r + 1}"></td>`;
+      }
+      h += `<td class="total">${total(p)}</td>
+        <td><button type="button" class="x" data-delp="${pi}" aria-label="Spieler entfernen">✕</button></td></tr>`;
+    });
+    h += "</tbody>";
+    $("scores").innerHTML = h;
+    rankDom();
+    updatePermissions();
+  }
+
+  // Ränge neu berechnen und Zeilen umsortieren, ohne die Eingabefelder zu ersetzen.
+  function rankDom() {
+    const tb = $("scores").querySelector("tbody");
+    if (!tb) return;
+    const rows = [...tb.children];
+    rows.sort((a, b) => total(state.players[+b.dataset.p]) - total(state.players[+a.dataset.p]));
+    rows.forEach((tr, i) => {
+      tr.querySelector(".rank").textContent = i + 1;
+      tr.classList.toggle("first", i === 0 && total(state.players[+tr.dataset.p]) > 0);
+      tb.appendChild(tr);
+    });
+  }
+
+  $("scores").addEventListener("input", (e) => {
+    const tr = e.target.closest("tr[data-p]");
+    if (!tr) return;
+    const p = state.players[+tr.dataset.p];
+    if (e.target.dataset.f === "name") {
+      p.name = e.target.value;
+    } else if (e.target.dataset.r !== undefined) {
+      p.scores[+e.target.dataset.r] = num(e.target.value);
+      tr.querySelector(".total").textContent = total(p);
+    }
+    queueSave();
+  });
+  $("scores").addEventListener("change", rankDom);
+  $("scores").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-delp]");
+    if (!b) return;
+    const p = state.players[+b.dataset.delp];
+    if (!confirm(`„${p.name}" wirklich entfernen?`)) return;
+    state.players.splice(+b.dataset.delp, 1);
+    renderScores();
+    queueSave();
+  });
+
+  $("addPlayer").addEventListener("click", () => {
+    state.players.push({ name: "Spieler " + (state.players.length + 1), scores: Array(state.rounds).fill(0) });
+    renderScores();
+    queueSave();
+  });
+  $("addRound").addEventListener("click", () => {
+    state.rounds += 1;
+    state.players.forEach((p) => p.scores.push(0));
+    renderScores();
+    queueSave();
+  });
+  $("removeRound").addEventListener("click", () => {
+    if (state.rounds <= 1) return;
+    if (!confirm(`Runde ${state.rounds} mit allen Punkten entfernen?`)) return;
+    state.rounds -= 1;
+    state.players.forEach((p) => p.scores.length = state.rounds);
+    renderScores();
+    queueSave();
+  });
+  $("resetScores").addEventListener("click", () => {
+    if (!confirm("Alle Punkte auf 0 setzen?")) return;
+    state.players.forEach((p) => p.scores = Array(state.rounds).fill(0));
+    renderScores();
+    queueSave();
+  });
+
+  /* ---------- Hotdogs & Infos ---------- */
+
+  function renderDogs() { $("dogCount").textContent = state.hotdogs; }
+  $("dogPlus").addEventListener("click", () => { state.hotdogs += 1; renderDogs(); queueSave(); });
+  $("dogMinus").addEventListener("click", () => { state.hotdogs = Math.max(0, state.hotdogs - 1); renderDogs(); queueSave(); });
+
+  $("info").addEventListener("input", (e) => { state.info = e.target.value; queueSave(); });
+
+  /* ---------- Konten & Sounds ---------- */
+
+  function authView(view) {
+    const settings = view === "settings";
+    $("authPanel").hidden = false;
+    $("authTabs").hidden = settings;
+    $("loginForm").hidden = view !== "login";
+    $("registerForm").hidden = view !== "register";
+    $("settingsForm").hidden = !settings;
+    $("authTitle").textContent = settings ? "Sound-Einstellungen" : view === "register" ? "Registrieren" : "Anmelden";
+    showMessage("");
+    if (settings && currentAccount) {
+      $("settingsForm").elements.sound_mode.value = currentAccount.sound_mode || "name";
+      $("settingsForm").elements.sound_file.value = currentAccount.sound_file || "";
+    }
+  }
+
+  function populateSoundMenus() {
+    document.querySelectorAll(".sound-file").forEach((select) => {
+      select.replaceChildren();
+      const fallback = document.createElement("option");
+      fallback.value = "";
+      fallback.textContent = "Signalton-Fallback (keine WAV-Datei)";
+      select.appendChild(fallback);
+      sounds.forEach((filename) => {
+        const option = document.createElement("option");
+        option.value = filename;
+        option.textContent = filename;
+        select.appendChild(option);
+      });
+    });
+    document.querySelectorAll(".sound-mode").forEach((select) => {
+      select.addEventListener("change", () => {
+        const fileSelect = select.closest("form").querySelector(".sound-file");
+        fileSelect.disabled = select.value === "name";
+      });
+      select.dispatchEvent(new Event("change"));
+    });
+  }
+
+  async function refreshAccount() {
+    try {
+      const response = await fetch("/api/me", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      currentAccount = data.user || null;
+      updateAccountUI();
+    } catch (e) { /* Bei Offline-Betrieb bleibt der lokale Stand erhalten. */ }
+  }
+
+  async function loadSounds() {
+    try {
+      const response = await fetch("/api/sounds", { cache: "no-store" });
+      if (response.ok) sounds = (await response.json()).sounds || [];
+    } catch (e) { sounds = []; }
+    populateSoundMenus();
+  }
+
+  async function postJson(path, data) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Die Anfrage ist fehlgeschlagen.");
+    return result;
+  }
+
+  function formSoundData(form) {
+    return { sound_mode: form.elements.sound_mode.value, sound_file: form.elements.sound_file.value };
+  }
+
+  $("openAuth").addEventListener("click", () => authView("login"));
+  $("openSettings").addEventListener("click", () => authView("settings"));
+  $("closeAuth").addEventListener("click", () => { $("authPanel").hidden = true; });
+  document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+    button.addEventListener("click", () => authView(button.dataset.authTab));
+  });
+
+  $("loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const result = await postJson("/api/login", {
+        username: form.elements.username.value,
+        password: form.elements.password.value
+      });
+      currentAccount = result.user;
+      form.reset();
+      $("authPanel").hidden = true;
+      showMessage("");
+      updateAccountUI();
+    } catch (error) { showMessage(error.message || "Anmeldung fehlgeschlagen."); }
+  });
+
+  $("registerForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const result = await postJson("/api/register", {
+        username: form.elements.username.value,
+        password: form.elements.password.value,
+        ...formSoundData(form)
+      });
+      currentAccount = result.user;
+      form.reset();
+      $("authPanel").hidden = true;
+      showMessage("");
+      updateAccountUI();
+      await poll();
+    } catch (error) { showMessage(error.message || "Registrierung fehlgeschlagen."); }
+  });
+
+  $("settingsForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await postJson("/api/me/sound", formSoundData(event.currentTarget));
+      currentAccount = result.user;
+      showMessage("Sound-Einstellungen gespeichert.");
+      updateAccountUI();
+    } catch (error) { showMessage(error.message || "Einstellungen konnten nicht gespeichert werden."); }
+  });
+
+  document.querySelectorAll(".sound-test").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const form = button.closest("form");
+      try {
+        const result = await postJson("/api/sound/test", formSoundData(form));
+        showMessage(result.message || "Sound wurde gestartet.");
+      } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+    });
+  });
+
+  $("arrive").addEventListener("click", async () => {
+    try {
+      const response = await fetch("/api/sound/arrive", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Sound konnte nicht gestartet werden.");
+      showMessage(result.message || "Du bist angemeldet.");
+    } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+  });
+
+  $("logout").addEventListener("click", async () => {
+    try { await fetch("/api/logout", { method: "POST" }); } catch (e) { /* Sitzung endet spätestens beim Server-Neustart. */ }
+    currentAccount = null;
+    $("authPanel").hidden = true;
+    updateAccountUI();
+  });
+
+  /* ---------- Start ---------- */
+
+  function renderAll() {
+    renderSchedule();
+    renderScores();
+    renderDogs();
+    $("info").value = state.info;
+    tick();
+  }
+
+  (async () => {
+    state = await loadState();
+    await refreshAccount();
+    await loadSounds();
+    renderAll();
+    setInterval(tick, 1000);
+    setInterval(poll, 3000);
+  })();
+})();
+</script>
+</body>
+</html>
