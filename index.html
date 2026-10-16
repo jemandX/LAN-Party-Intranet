@@ -361,13 +361,6 @@
             font-size: .9rem;
             margin: .75rem 0 0;
         }
-
-        .upload-box {
-            display: flex;
-            gap: .5rem;
-            align-items: center;
-            margin-top: .4rem;
-        }
     </style>
 </head>
 <body>
@@ -385,6 +378,7 @@
             </div>
         </div>
         <p class="hint" id="authHint">Nur lesender Zugriff. Melde dich an, um Punkte und Hotdogs zu ändern.</p>
+
         <div class="auth-panel" id="authPanel" hidden>
             <div class="topline"><strong id="authTitle">Anmelden</strong><button type="button" class="ghost" id="closeAuth">Schließen</button></div>
             <div class="auth-tabs" id="authTabs">
@@ -398,34 +392,50 @@
                 <button type="submit">Anmelden</button>
             </form>
 
+            <!-- Absolut bereinigtes Registrierungsformular (keine nutzlosen Felder oder doppelten Upload-Buttons) -->
             <form id="registerForm" hidden>
                 <label>Benutzername<input type="text" name="username" minlength="2" maxlength="20" autocomplete="username" required></label>
                 <label>Passwort (mindestens 6 Zeichen)<input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
-                <label>Steam-Handle<input type="text" name="steam_handle" placeholder="Dein Steam-Profil / Name" maxlength="50"></label>
-                <label>Profilbild (Bild-URL)<input type="url" name="avatar_url" placeholder="https://... Bild-Link" maxlength="255"></label>
-                <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
-                <label>Sound-Datei (.wav/.mp3/.mp4)<select name="sound_file" class="sound-file"></select></label>
-                <div class="upload-box">
-                    <input type="file" id="regSoundFile" accept=".wav,.mp3,.mp4">
-                    <button type="button" class="ghost" id="regUploadBtn">Datei hochladen</button>
+                <label>
+                    Sound-Modus
+                    <select name="sound_mode" class="sound-mode">
+                        <option value="name">Nur Name ansagen</option>
+                        <option value="sound">Nur Sound-Datei</option>
+                        <option value="both">Beides (Name + Sound)</option>
+                    </select>
+                </label>
+                <label>
+                    Sound-Datei (.wav / .mp3)
+                    <select name="sound_file" class="sound-file"></select>
+                </label>
+                <div class="auth-actions">
+                    <button type="button" class="ghost sound-test">Sound im Browser testen</button>
+                    <button type="submit">Konto erstellen</button>
                 </div>
-                <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Konto erstellen</button></div>
             </form>
 
             <form id="settingsForm" hidden>
-                <label>Steam-Handle<input type="text" name="steam_handle" placeholder="Dein Steam-Profil / Name" maxlength="50"></label>
-                <label>Profilbild (Bild-URL)<input type="url" name="avatar_url" placeholder="https://... Bild-Link" maxlength="255"></label>
-                <label>Sound-Modus<select name="sound_mode" class="sound-mode"><option value="name">Nur Name ansagen</option><option value="sound">Nur Sound</option><option value="both">Beides</option></select></label>
-                <label>Sound-Datei (.wav/.mp3/.mp4)<select name="sound_file" class="sound-file"></select></label>
-                <div class="upload-box">
-                    <input type="file" id="setSoundFile" accept=".wav,.mp3,.mp4">
-                    <button type="button" class="ghost" id="setUploadBtn">Datei hochladen</button>
+                <label>
+                    Sound-Modus
+                    <select name="sound_mode" class="sound-mode">
+                        <option value="name">Nur Name ansagen</option>
+                        <option value="sound">Nur Sound-Datei</option>
+                        <option value="both">Beides (Name + Sound)</option>
+                    </select>
+                </label>
+                <label>
+                    Sound-Datei (.wav / .mp3)
+                    <select name="sound_file" class="sound-file"></select>
+                </label>
+                <div class="auth-actions">
+                    <button type="button" class="ghost sound-test">Sound im Browser testen</button>
+                    <button type="submit">Einstellungen speichern</button>
                 </div>
-                <div class="auth-actions"><button type="button" class="ghost sound-test">Sound testen</button><button type="submit">Einstellungen speichern</button></div>
             </form>
 
             <p class="form-error" id="authMessage" role="status" aria-live="polite"></p>
         </div>
+
         <p class="now-label">Gerade läuft</p>
         <h1 class="now-title" id="nowTitle">…</h1>
         <div class="countdown" id="countdown"></div>

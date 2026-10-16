@@ -35,6 +35,9 @@
   let currentAccount = null;
   let sounds = [];
 
+  // Zentrales Audio-Element für den Browser (verhindert Garbage Collection / Blockaden)
+  const globalAudio = new Audio();
+
   function normalize(s) {
     s = s && typeof s === "object" ? s : JSON.parse(JSON.stringify(DEFAULT));
     s.schedule = Array.isArray(s.schedule) ? s.schedule : [];
@@ -53,6 +56,33 @@
     $("authMessage").textContent = message;
     if (message) $("authHint").textContent = message;
     else updateAccountUI();
+  }
+
+  function playClientSound(mode, filename, username) {
+    let triggered = false;
+
+    if ((mode === "sound" || mode === "both") && filename) {
+      globalAudio.src = "/sounds/" + encodeURIComponent(filename);
+      globalAudio.currentTime = 0;
+      globalAudio.play().catch((err) => {
+        console.warn("Audio-Wiedergabe blockiert:", err);
+      });
+      triggered = true;
+    }
+
+    if ((mode === "name" || mode === "both") && username) {
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(username);
+        utterance.lang = "de-DE";
+        window.speechSynthesis.speak(utterance);
+        triggered = true;
+      }
+    }
+
+    if (!triggered) {
+      showMessage("Hinweis: Wähle eine Sound-Datei aus oder aktiviere die Ansage.");
+    }
   }
 
   function updateAccountUI() {
@@ -239,18 +269,13 @@
   const total = (p) => p.scores.reduce((a, b) => a + (Number(b) || 0), 0);
 
   function renderScores() {
-    let h = "<thead><tr><th>Platz</th><th class='avatar-cell'></th><th>Name / Steam</th>";
+    let h = "<thead><tr><th>Platz</th><th class='avatar-cell'></th><th>Name</th>";
     for (let r = 0; r < state.rounds; r++) h += `<th>Runde ${r + 1}</th>`;
     h += "<th>Gesamt</th><th></th></tr></thead><tbody>";
     state.players.forEach((p, pi) => {
-      const avatar = p.avatar_url || "";
-      const steam = p.steam_handle || "";
       h += `<tr data-p="${pi}"><td class="rank"></td>
-        <td class="avatar-cell">${avatar ? `<img src="${esc(avatar)}" class="avatar-thumb" alt="">` : `<span class="avatar-thumb"></span>`}</td>
-        <td>
-          <input type="text" value="${esc(p.name)}" data-f="name" aria-label="Name" maxlength="30">
-          ${steam ? `<br><small style="color:var(--muted)">Steam: ${esc(steam)}</small>` : ""}
-        </td>`;
+        <td class="avatar-cell"><span class="avatar-thumb"></span></td>
+        <td><input type="text" value="${esc(p.name)}" data-f="name" aria-label="Name" maxlength="30"></td>`;
       for (let r = 0; r < state.rounds; r++) {
         h += `<td><input type="number" value="${num(p.scores[r])}" data-r="${r}" aria-label="Punkte Runde ${r + 1}"></td>`;
       }
@@ -342,8 +367,6 @@
       const f = $("settingsForm").elements;
       f.sound_mode.value = currentAccount.sound_mode || "name";
       f.sound_file.value = currentAccount.sound_file || "";
-      f.steam_handle.value = currentAccount.steam_handle || "";
-      f.avatar_url.value = currentAccount.avatar_url || "";
       f.sound_mode.dispatchEvent(new Event("change"));
     }
   }
@@ -354,7 +377,7 @@
       select.replaceChildren();
       const fallback = document.createElement("option");
       fallback.value = "";
-      fallback.textContent = "Signalton-Fallback (keine Datei)";
+      fallback.textContent = "-- Keine Sound-Datei --";
       select.appendChild(fallback);
       sounds.forEach((filename) => {
         const option = document.createElement("option");
@@ -363,13 +386,6 @@
         select.appendChild(option);
       });
       select.value = currentVal;
-    });
-    document.querySelectorAll(".sound-mode").forEach((select) => {
-      select.onchange = () => {
-        const fileSelect = select.closest("form").querySelector(".sound-file");
-        if(fileSelect) fileSelect.disabled = select.value === "name";
-      };
-      select.dispatchEvent(new Event("change"));
     });
   }
 
@@ -402,37 +418,12 @@
     return result;
   }
 
-  async function uploadSoundFile(fileInputId) {
-    const fileInput = $(fileInputId);
-    if (!fileInput.files.length) {
-      showMessage("Bitte zuerst eine Datei auswählen.");
-      return;
-    }
-    const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const r = await fetch("/api/sound/upload", { method: "POST", body: formData });
-      const res = await r.json();
-      if (!r.ok) throw new Error(res.error || "Upload fehlgeschlagen");
-      fileInput.value = "";
-      await loadSounds();
-      showMessage("Datei erfolgreich hochgeladen!");
-    } catch (err) {
-      showMessage(err.message);
-    }
-  }
-
   $("openAuth").addEventListener("click", () => authView("login"));
   $("openSettings").addEventListener("click", () => authView("settings"));
   $("closeAuth").addEventListener("click", () => { $("authPanel").hidden = true; });
   document.querySelectorAll("[data-auth-tab]").forEach((button) => {
     button.addEventListener("click", () => authView(button.dataset.authTab));
   });
-
-  $("regUploadBtn").addEventListener("click", (e) => { e.preventDefault(); uploadSoundFile("regSoundFile"); });
-  $("setUploadBtn").addEventListener("click", (e) => { e.preventDefault(); uploadSoundFile("setSoundFile"); });
 
   $("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -447,6 +438,7 @@
       $("authPanel").hidden = true;
       showMessage("");
       updateAccountUI();
+      playClientSound(currentAccount.sound_mode, currentAccount.sound_file, currentAccount.username);
     } catch (error) { showMessage(error.message || "Anmeldung fehlgeschlagen."); }
   });
 
@@ -458,8 +450,6 @@
       const result = await postJson("/api/register", {
         username: f.username.value,
         password: f.password.value,
-        steam_handle: f.steam_handle.value,
-        avatar_url: f.avatar_url.value,
         sound_mode: f.sound_mode.value,
         sound_file: f.sound_file.value
       });
@@ -468,6 +458,7 @@
       $("authPanel").hidden = true;
       showMessage("");
       updateAccountUI();
+      playClientSound(currentAccount.sound_mode, currentAccount.sound_file, currentAccount.username);
       await poll();
     } catch (error) { showMessage(error.message || "Registrierung fehlgeschlagen."); }
   });
@@ -478,8 +469,6 @@
     const f = formElement.elements;
     try {
       const result = await postJson("/api/me/settings", {
-        steam_handle: f.steam_handle.value,
-        avatar_url: f.avatar_url.value,
         sound_mode: f.sound_mode.value,
         sound_file: f.sound_file.value
       });
@@ -490,37 +479,23 @@
   });
 
   document.querySelectorAll(".sound-test").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const form = button.closest("form");
       const f = form.elements;
-      try {
-        const data = {
-          sound_mode: f.sound_mode.value,
-          sound_file: f.sound_file.value
-        };
-        if (form.id === "registerForm") data.username = f.username.value;
-        
-        // Sound im Browser direkt testen, wenn eine Datei gewählt ist
-        if (data.sound_file) {
-          new Audio('/sounds/' + data.sound_file).play().catch(() => {});
-        }
+      const mode = f.sound_mode.value;
+      const file = f.sound_file.value;
+      const uname = form.id === "registerForm" ? (f.username.value || "Test") : (currentAccount ? currentAccount.username : "Test");
 
-        const result = await postJson("/api/sound/test", data);
-        showMessage(result.message || "Sound wurde gestartet.");
-      } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+      playClientSound(mode, file, uname);
+      showMessage("Sound-Test ausgeführt.");
     });
   });
 
-  $("arrive").addEventListener("click", async () => {
-    try {
-      const response = await fetch("/api/sound/arrive", { method: "POST" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Sound konnte nicht gestartet werden.");
-      if (result.sound_file) {
-        new Audio('/sounds/' + result.sound_file).play().catch(() => {});
-      }
-      showMessage(result.message || "Du bist angemeldet.");
-    } catch (error) { showMessage(error.message || "Sound konnte nicht gestartet werden."); }
+  $("arrive").addEventListener("click", () => {
+    if (currentAccount) {
+      playClientSound(currentAccount.sound_mode, currentAccount.sound_file, currentAccount.username);
+      showMessage("Du bist da!");
+    }
   });
 
   $("logout").addEventListener("click", async () => {

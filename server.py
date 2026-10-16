@@ -12,8 +12,6 @@ import queue
 import re
 import secrets
 import socket
-import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -32,9 +30,6 @@ sessions_lock = threading.Lock()
 sessions = {}
 login_attempts_lock = threading.Lock()
 login_attempts = {}
-sound_cooldowns_lock = threading.Lock()
-sound_cooldowns = {}
-sound_queue = queue.Queue()
 SOUNDS_DIR = os.path.join(ROOT, "sounds")
 os.makedirs(SOUNDS_DIR, exist_ok=True)
 SOUND_MODES = {"name", "sound", "both"}
@@ -178,62 +173,6 @@ def available_sounds():
         return []
 
 
-def allow_sound(user):
-    now = time.time()
-    key = username_key(user["username"])
-    with sound_cooldowns_lock:
-        last = sound_cooldowns.get(key, 0)
-        if now - last < 30:
-            return False
-        sound_cooldowns[key] = now
-        return True
-
-
-def enqueue_sound(user, selected_file=None):
-    mode = user.get("sound_mode", "name")
-    filename = selected_file if selected_file is not None else user.get("sound_file", "")
-    if filename not in available_sounds():
-        filename = ""
-    sound_queue.put((user["username"], mode, filename))
-
-
-def play_sound_item(item):
-    username, mode, filename = item
-    if sys.platform != "win32":
-        return
-    try:
-        import winsound
-        if mode in ("sound", "both"):
-            if filename:
-                path = os.path.join(SOUNDS_DIR, filename)
-                if os.path.commonpath([SOUNDS_DIR, os.path.abspath(path)]) == SOUNDS_DIR and path.endswith(".wav"):
-                    winsound.PlaySound(path, winsound.SND_FILENAME)
-            else:
-                for frequency, duration in ((660, 120), (880, 160), (990, 200)):
-                    winsound.Beep(frequency, duration)
-        if mode in ("name", "both"):
-            safe_name = re.sub(r"[^\w .-]", "", username, flags=re.UNICODE)[:20].strip()
-            if safe_name:
-                script = "$name = [Console]::In.ReadToEnd(); $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak($name)"
-                subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                               input=safe_name, text=True, timeout=30, check=False,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
-
-
-def sound_worker():
-    while True:
-        item = sound_queue.get()
-        try:
-            play_sound_item(item)
-        finally:
-            sound_queue.task_done()
-
-
-threading.Thread(target=sound_worker, name="Host-Sound", daemon=True).start()
-
-
 def clean(d, rev):
     return {
         "rev": rev,
@@ -257,6 +196,17 @@ def clean(d, rev):
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=ROOT, **kwargs)
+
+    def end_headers(self):
+        # Korrekte Mime-Types für Audio-Dateien im Ordner /sounds/ setzen
+        if self.path.startswith("/sounds/"):
+            if self.path.endswith(".wav"):
+                self.send_header("Content-Type", "audio/wav")
+            elif self.path.endswith(".mp3"):
+                self.send_header("Content-Type", "audio/mpeg")
+            elif self.path.endswith(".mp4"):
+                self.send_header("Content-Type", "audio/mp4")
+        super().end_headers()
 
     def send_json(self, code, obj):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -294,12 +244,6 @@ class Handler(SimpleHTTPRequestHandler):
                 login_attempts.pop(ip, None)
             else:
                 login_attempts.setdefault(ip, []).append(time.time())
-
-    def sound_request(self, user, selected_file=None):
-        if not allow_sound(user):
-            return self.send_json(429, {"error": "Bitte warte 30 Sekunden bis zum nächsten Sound."})
-        enqueue_sound(user, selected_file)
-        return self.send_json(202, {"ok": True, "message": "Sound wurde in die Warteschlange gestellt.", "sound_file": selected_file or user.get("sound_file", "")})
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -468,8 +412,6 @@ class Handler(SimpleHTTPRequestHandler):
                 self.record_login_failure(success=True)
                 p_user = public_user(user)
                 token = issue_session(p_user)
-                if allow_sound(user):
-                    enqueue_sound(user)
                 body = json.dumps({"user": p_user}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -503,24 +445,16 @@ class Handler(SimpleHTTPRequestHandler):
                 user = require_user(self)
                 if user is None:
                     return
-                return self.sound_request(user)
+                return self.send_json(200, {"ok": True, "sound_file": user.get("sound_file", ""), "sound_mode": user.get("sound_mode", "name")})
+            
             user = current_user(self)
             try:
                 data = self.read_json()
                 mode = data.get("sound_mode", user.get("sound_mode", "name") if user else "name")
                 selected = data.get("sound_file", user.get("sound_file", "") if user else "")
-                if mode not in SOUND_MODES or not isinstance(selected, str) or (selected and selected not in available_sounds()):
-                    return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
-                if user is None:
-                    username = data.get("username", "").strip()
-                    if len(username) < 2 or len(username) > 20:
-                        return self.send_json(400, {"error": "Ungültiger Benutzername."})
-                    user = {"username": username, "sound_mode": mode, "sound_file": selected}
-                else:
-                    user = dict(user, sound_mode=mode, sound_file=selected)
+                return self.send_json(200, {"ok": True, "sound_file": selected, "sound_mode": mode})
             except Exception:
                 return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
-            return self.sound_request(user, selected)
 
         if path == "/api/state":
             user = require_user(self)
