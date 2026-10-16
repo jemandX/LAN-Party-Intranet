@@ -25,7 +25,7 @@ PORT = 8080
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(ROOT, "state.json")
 USERS_FILE = os.path.join(ROOT, "users.json")
-MAX_REQUEST_SIZE = 64_000
+MAX_REQUEST_SIZE = 1_000_000
 lock = threading.Lock()
 users_lock = threading.Lock()
 sessions_lock = threading.Lock()
@@ -36,6 +36,7 @@ sound_cooldowns_lock = threading.Lock()
 sound_cooldowns = {}
 sound_queue = queue.Queue()
 SOUNDS_DIR = os.path.join(ROOT, "sounds")
+os.makedirs(SOUNDS_DIR, exist_ok=True)
 SOUND_MODES = {"name", "sound", "both"}
 
 DEFAULT = {
@@ -84,7 +85,6 @@ def load_users():
 
 
 def save_users(users):
-    """Schreibt users.json atomar, damit ein Abbruch keine halbe Datei hinterlässt."""
     fd, temp_path = tempfile.mkstemp(prefix="users-", suffix=".tmp", dir=ROOT)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -118,9 +118,14 @@ def verify_password(password, user):
 
 
 def public_user(user):
-    return {"username": user["username"], "role": user["role"],
-            "sound_mode": user.get("sound_mode", "name"),
-            "sound_file": user.get("sound_file", "")}
+    return {
+        "username": user["username"],
+        "role": user["role"],
+        "sound_mode": user.get("sound_mode", "name"),
+        "sound_file": user.get("sound_file", ""),
+        "steam_handle": user.get("steam_handle", ""),
+        "avatar_url": user.get("avatar_url", "")
+    }
 
 
 def current_user(handler):
@@ -155,7 +160,6 @@ def require_user(handler):
 
 
 def admin_state_change(old, new):
-    """Prüft, ob ein Nicht-Admin nur erlaubte Werte verändert hat."""
     return (old.get("schedule") == new.get("schedule")
             and old.get("rounds") == new.get("rounds")
             and old.get("info") == new.get("info")
@@ -168,7 +172,7 @@ def admin_state_change(old, new):
 def available_sounds():
     try:
         return sorted(name for name in os.listdir(SOUNDS_DIR)
-                      if name.lower().endswith(".wav")
+                      if name.lower().endswith((".wav", ".mp3", ".mp4"))
                       and os.path.isfile(os.path.join(SOUNDS_DIR, name)))
     except OSError:
         return []
@@ -196,14 +200,13 @@ def enqueue_sound(user, selected_file=None):
 def play_sound_item(item):
     username, mode, filename = item
     if sys.platform != "win32":
-        print("Sound übersprungen: Host ist kein Windows-System.")
         return
     try:
         import winsound
         if mode in ("sound", "both"):
             if filename:
                 path = os.path.join(SOUNDS_DIR, filename)
-                if os.path.commonpath([SOUNDS_DIR, os.path.abspath(path)]) == SOUNDS_DIR:
+                if os.path.commonpath([SOUNDS_DIR, os.path.abspath(path)]) == SOUNDS_DIR and path.endswith(".wav"):
                     winsound.PlaySound(path, winsound.SND_FILENAME)
             else:
                 for frequency, duration in ((660, 120), (880, 160), (990, 200)):
@@ -215,8 +218,8 @@ def play_sound_item(item):
                 subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
                                input=safe_name, text=True, timeout=30, check=False,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception as exc:
-        print("Sound-Wiedergabe fehlgeschlagen: " + str(exc))
+    except Exception:
+        pass
 
 
 def sound_worker():
@@ -232,7 +235,6 @@ threading.Thread(target=sound_worker, name="Host-Sound", daemon=True).start()
 
 
 def clean(d, rev):
-    """Prüft und begrenzt die Daten, die ein Browser schickt."""
     return {
         "rev": rev,
         "schedule": [
@@ -297,7 +299,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not allow_sound(user):
             return self.send_json(429, {"error": "Bitte warte 30 Sekunden bis zum nächsten Sound."})
         enqueue_sound(user, selected_file)
-        return self.send_json(202, {"ok": True, "message": "Sound wurde in die Warteschlange gestellt."})
+        return self.send_json(202, {"ok": True, "message": "Sound wurde in die Warteschlange gestellt.", "sound_file": selected_file or user.get("sound_file", "")})
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -314,13 +316,84 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/api/sound/upload":
+            user = require_user(self)
+            if user is None:
+                return
+            content_type = self.headers.get("Content-Type", "")
+            if "multipart/form-data" not in content_type:
+                return self.send_json(400, {"error": "Multipart-Daten erwartet."})
+            try:
+                import email.message
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                msg = email.message.EmailMessage()
+                msg["Content-Type"] = content_type
+                msg.set_payload(body)
+                
+                filename = None
+                file_data = None
+                if msg.is_multipart():
+                    for part in msg.iter_parts():
+                        disp = part.get("Content-Disposition", "")
+                        if "filename=" in disp:
+                            filename = part.get_filename()
+                            file_data = part.get_payload(decode=True)
+                            break
+                if not filename or not file_data:
+                    return self.send_json(400, {"error": "Keine Datei gefunden."})
+                
+                filename = os.path.basename(filename)
+                if not filename.lower().endswith((".wav", ".mp3", ".mp4")):
+                    return self.send_json(400, {"error": "Nur .wav, .mp3 oder .mp4 Dateien erlaubt."})
+                
+                filepath = os.path.join(SOUNDS_DIR, filename)
+                with open(filepath, "wb") as f:
+                    f.write(file_data)
+                return self.send_json(200, {"ok": True, "filename": filename})
+            except Exception:
+                return self.send_json(400, {"error": "Upload fehlgeschlagen."})
+
+        if path == "/api/me/settings":
+            user = require_user(self)
+            if user is None:
+                return
+            try:
+                data = self.read_json()
+                mode = data.get("sound_mode", user.get("sound_mode", "name"))
+                filename = data.get("sound_file", user.get("sound_file", ""))
+                steam = str(data.get("steam_handle", user.get("steam_handle", "")))[:50]
+                avatar = str(data.get("avatar_url", user.get("avatar_url", "")))[:255]
+
+                if mode not in SOUND_MODES or (filename and filename not in available_sounds()):
+                    return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
+
+                key = username_key(user["username"])
+                with users_lock:
+                    users = load_users()
+                    if key in users:
+                        users[key]["sound_mode"] = mode
+                        users[key]["sound_file"] = filename
+                        users[key]["steam_handle"] = steam
+                        users[key]["avatar_url"] = avatar
+                        save_users(users)
+                user.update({"sound_mode": mode, "sound_file": filename, "steam_handle": steam, "avatar_url": avatar})
+                with sessions_lock:
+                    for session in sessions.values():
+                        if username_key(session["user"]["username"]) == key:
+                            session["user"] = dict(user)
+                return self.send_json(200, {"user": public_user(user)})
+            except Exception:
+                return self.send_json(400, {"error": "Fehler beim Speichern der Einstellungen."})
+
         try:
             request_length = int(self.headers.get("Content-Length", 0))
         except ValueError:
             return self.send_json(400, {"error": "Ungültige Anfragegröße."})
         if request_length < 0 or request_length > MAX_REQUEST_SIZE:
             return self.send_json(413, {"error": "Anfrage ist zu groß."})
-        path = self.path.split("?", 1)[0]
+
         if path == "/api/register":
             try:
                 data = self.read_json()
@@ -328,25 +401,35 @@ class Handler(SimpleHTTPRequestHandler):
                 password = data.get("password", "")
                 mode = data.get("sound_mode", "name")
                 filename = data.get("sound_file", "")
+                steam = str(data.get("steam_handle", ""))[:50]
+                avatar = str(data.get("avatar_url", ""))[:255]
+                
                 if not isinstance(username, str):
                     return self.send_json(400, {"error": "Ungültiger Benutzername."})
                 username = username.strip()
-                if (len(username) < 2 or len(username) > 20
-                        or any(ord(ch) < 32 for ch in username)):
+                if len(username) < 2 or len(username) > 20 or any(ord(ch) < 32 for ch in username):
                     return self.send_json(400, {"error": "Der Benutzername muss 2 bis 20 Zeichen lang sein."})
                 if not isinstance(password, str) or len(password) < 6:
                     return self.send_json(400, {"error": "Das Passwort muss mindestens 6 Zeichen lang sein."})
                 if mode not in SOUND_MODES or (filename and filename not in available_sounds()):
                     return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
+
                 salt, password_hash = hash_password(password)
                 key = username_key(username)
                 with users_lock:
                     users = load_users()
                     if key in users:
                         return self.send_json(409, {"error": "Dieser Benutzername ist bereits vergeben."})
-                    user = {"username": username, "role": "admin" if not users else "user",
-                            "salt": salt, "password_hash": password_hash,
-                            "sound_mode": mode, "sound_file": filename}
+                    user = {
+                        "username": username,
+                        "role": "admin" if not users else "user",
+                        "salt": salt,
+                        "password_hash": password_hash,
+                        "sound_mode": mode,
+                        "sound_file": filename,
+                        "steam_handle": steam,
+                        "avatar_url": avatar
+                    }
                     users[key] = user
                     save_users(users)
                     with lock:
@@ -365,8 +448,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            except (ValueError, TypeError, KeyError):
+            except Exception:
                 return self.send_json(400, {"error": "Ungültige Registrierungsdaten."})
+
         if path == "/api/login":
             if self.login_ip_limited():
                 return self.send_json(429, {"error": "Zu viele Fehlversuche. Bitte warte eine Minute."})
@@ -382,11 +466,11 @@ class Handler(SimpleHTTPRequestHandler):
                     self.record_login_failure()
                     return self.send_json(401, {"error": "Benutzername oder Passwort ist falsch."})
                 self.record_login_failure(success=True)
-                user = public_user(user)
-                token = issue_session(user)
+                p_user = public_user(user)
+                token = issue_session(p_user)
                 if allow_sound(user):
                     enqueue_sound(user)
-                body = json.dumps({"user": user}, ensure_ascii=False).encode("utf-8")
+                body = json.dumps({"user": p_user}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
@@ -395,8 +479,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            except (ValueError, TypeError):
+            except Exception:
                 return self.send_json(400, {"error": "Ungültige Anmeldedaten."})
+
         if path == "/api/logout":
             cookie = SimpleCookie()
             cookie.load(self.headers.get("Cookie", ""))
@@ -412,31 +497,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"ok":true}')
             return
-        if path == "/api/me/sound":
-            user = require_user(self)
-            if user is None:
-                return
-            try:
-                data = self.read_json()
-                mode = data.get("sound_mode", "name")
-                filename = data.get("sound_file", "")
-                if mode not in SOUND_MODES or not isinstance(filename, str) or (filename and filename not in available_sounds()):
-                    return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
-                key = username_key(user["username"])
-                with users_lock:
-                    users = load_users()
-                    users[key]["sound_mode"] = mode
-                    users[key]["sound_file"] = filename
-                    save_users(users)
-                user["sound_mode"] = mode
-                user["sound_file"] = filename
-                with sessions_lock:
-                    for session in sessions.values():
-                        if username_key(session["user"]["username"]) == key:
-                            session["user"] = dict(user)
-                return self.send_json(200, {"user": public_user(user)})
-            except (ValueError, TypeError, KeyError):
-                return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
+
         if path in ("/api/sound/test", "/api/sound/arrive"):
             if path == "/api/sound/arrive":
                 user = require_user(self)
@@ -444,7 +505,6 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 return self.sound_request(user)
             user = current_user(self)
-            selected = None
             try:
                 data = self.read_json()
                 mode = data.get("sound_mode", user.get("sound_mode", "name") if user else "name")
@@ -453,34 +513,36 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
                 if user is None:
                     username = data.get("username", "").strip()
-                    if len(username) < 2 or len(username) > 20 or any(ord(ch) < 32 for ch in username):
-                        return self.send_json(400, {"error": "Gib für den Sound-Test einen gültigen Benutzernamen ein."})
+                    if len(username) < 2 or len(username) > 20:
+                        return self.send_json(400, {"error": "Ungültiger Benutzername."})
                     user = {"username": username, "sound_mode": mode, "sound_file": selected}
                 else:
                     user = dict(user, sound_mode=mode, sound_file=selected)
-            except (ValueError, TypeError, AttributeError):
+            except Exception:
                 return self.send_json(400, {"error": "Ungültige Sound-Einstellung."})
             return self.sound_request(user, selected)
-        if path != "/api/state":
-            return self.send_error(404)
-        user = require_user(self)
-        if user is None:
-            return
-        try:
-            data = self.read_json()
-            with lock:
-                old = load()
-                new = clean(data, old.get("rev", 0) + 1)
-                if user["role"] != "admin" and not admin_state_change(old, new):
-                    return self.send_json(403, {"error": "Dafür fehlen die Rechte."})
-                with open(STATE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(new, f, ensure_ascii=False, indent=2)
-            return self.send_json(200, new)
-        except Exception:
-            return self.send_json(400, {"error": "Ungültige Daten"})
+
+        if path == "/api/state":
+            user = require_user(self)
+            if user is None:
+                return
+            try:
+                data = self.read_json()
+                with lock:
+                    old = load()
+                    new = clean(data, old.get("rev", 0) + 1)
+                    if user["role"] != "admin" and not admin_state_change(old, new):
+                        return self.send_json(403, {"error": "Dafür fehlen die Rechte."})
+                    with open(STATE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(new, f, ensure_ascii=False, indent=2)
+                return self.send_json(200, new)
+            except Exception:
+                return self.send_json(400, {"error": "Ungültige Daten"})
+
+        return self.send_error(404)
 
     def log_message(self, *args):
-        pass  # keine Konsolenflut
+        pass
 
 
 def local_ip():
