@@ -77,6 +77,9 @@ def main():
     step("3) Führungs-Ansage",
          lambda: server.play_step(("say", server.LEADER_PHRASE.replace("{name}", "Test Spieler"))))
 
+    step("4) Englische Ansage (englische Stimme, falls installiert)",
+         lambda: server.play_step(("say", server.ARRIVAL_PHRASE_EN.replace("{name}", "Test Player"), "en")))
+
     print("\n================ ZUSAMMENFASSUNG ================")
     for title, ok, err in results:
         print("%s  %s%s" % ("OK    " if ok else "FEHLER", title, "" if ok else "  ->  " + err))

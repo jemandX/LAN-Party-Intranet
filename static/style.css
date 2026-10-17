@@ -125,3 +125,9 @@ audio { height: 2rem; max-width: 100%; }
   main#view { padding: .7rem; }
   #whoami { max-width: 24vw; }
 }
+
+.langsw { display: inline-flex; gap: .25rem; }
+.langsw button { min-height: 2rem; padding: .15rem .5rem; font-size: .85rem; }
+.langsw button.active { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.authtop { display: flex; justify-content: space-between; align-items: flex-start; }
+header { flex-wrap: wrap; }

@@ -12,27 +12,30 @@
 
 <section id="auth" hidden>
   <div class="card authcard">
-    <h1>LAN-Party</h1>
+    <div class="authtop">
+      <h1>LAN-Party</h1>
+      <span class="langsw"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></span>
+    </div>
     <div class="seg">
-      <button type="button" id="showLogin" class="active">Anmelden</button>
-      <button type="button" id="showRegister">Registrieren</button>
+      <button type="button" id="showLogin" class="active" data-i18n="login">Anmelden</button>
+      <button type="button" id="showRegister" data-i18n="register">Registrieren</button>
     </div>
 
     <form id="loginForm" autocomplete="on">
-      <label for="loginUser">Benutzername</label>
+      <label for="loginUser" data-i18n="username">Benutzername</label>
       <input id="loginUser" name="username" type="text" autocomplete="username" maxlength="24" required>
-      <label for="loginPass">Passwort</label>
+      <label for="loginPass" data-i18n="password">Passwort</label>
       <input id="loginPass" name="password" type="password" autocomplete="current-password" maxlength="128" required>
-      <button type="submit" class="primary">Anmelden</button>
+      <button type="submit" class="primary" data-i18n="login">Anmelden</button>
     </form>
 
     <form id="registerForm" autocomplete="on" hidden>
-      <label for="regUser">Benutzername (2-24 Zeichen)</label>
+      <label for="regUser" data-i18n="username_reg">Benutzername (2-24 Zeichen)</label>
       <input id="regUser" name="username" type="text" autocomplete="username" maxlength="24" required>
-      <label for="regPass">Passwort (mind. 6 Zeichen)</label>
+      <label for="regPass" data-i18n="password_reg">Passwort (mind. 6 Zeichen)</label>
       <input id="regPass" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="128" required>
-      <button type="submit" class="primary">Konto erstellen</button>
-      <p class="hint">Der erste Account auf diesem Server wird automatisch Admin.</p>
+      <button type="submit" class="primary" data-i18n="create_account">Konto erstellen</button>
+      <p class="hint" data-i18n="first_admin">Der erste Account auf diesem Server wird automatisch Admin.</p>
     </form>
     <p id="authMsg" class="msg error" role="alert"></p>
   </div>
@@ -44,10 +47,11 @@
     <div class="who">
       <span id="conn" class="conn"></span>
       <span id="whoami"></span>
-      <button type="button" id="logoutBtn">Abmelden</button>
+      <span class="langsw"><button type="button" data-lang="de">DE</button><button type="button" data-lang="en">EN</button></span>
+      <button type="button" id="logoutBtn" data-i18n="logout">Abmelden</button>
     </div>
   </header>
-  <nav id="tabs" aria-label="Bereiche"></nav>
+  <nav id="tabs" aria-label="Navigation"></nav>
   <main id="view"></main>
 </div>
 

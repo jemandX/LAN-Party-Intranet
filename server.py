@@ -13,6 +13,9 @@ ANNOUNCE_ON_LOGIN = True                      # Ansage auch beim Login (nicht nu
 ANNOUNCE_LEADER = True                        # Ansage bei Wechsel auf Platz 1
 LEADER_PHRASE = "{name} übernimmt die Führung"
 ARRIVAL_PHRASE = "{name} ist beigetreten"       # Satz bei Ankunft (Modus "Name" bzw. "Sound, dann Name")
+LEADER_PHRASE_EN = "{name} takes the lead"    # englische Variante der Fuehrungs-Ansage
+ARRIVAL_PHRASE_EN = "{name} has joined"       # englische Variante der Ankunfts-Ansage
+DEFAULT_LANG = "de"                           # Sprache fuer neue Konten und Spieler ohne Konto ("de" oder "en")
 # =======================================================================
 
 import base64
@@ -57,6 +60,7 @@ MAX_ROUNDS = 30
 MAX_SCHEDULE = 60
 MAX_INFO = 5000
 MODES = ("name", "sound", "both")
+LANGS = ("de", "en")
 
 SOUND_EXT = (".wav", ".mp3", ".mp4")
 SOUND_MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4"}
@@ -95,6 +99,92 @@ class ApiError(Exception):
 
 class AudioError(Exception):
     pass
+
+
+# ----------------------------- Uebersetzung der Server-Meldungen -----------------------------
+LABELS_EN = {"Spielername": "Player name", "Rundenname": "Round name", "Uhrzeit": "Time", "Titel": "Title",
+             "Info-Text": "Info text", "Benutzername": "Username", "Steam-Handle": "Steam handle",
+             "Steam-Link": "Steam link", "Name": "Name", "Punkte": "Points", "Änderung": "Change"}
+
+
+def _lab(x):
+    return LABELS_EN.get(x, x)
+
+
+EN_EXACT = {
+    "Ungültiger Origin.": "Invalid origin.",
+    "Content-Length fehlt.": "Content-Length is missing.",
+    "Ungültige Content-Length.": "Invalid Content-Length.",
+    "Anfrage zu groß.": "Request too large.",
+    "Anfrage unvollständig (Verbindung unterbrochen).": "Request incomplete (connection interrupted).",
+    "Content-Type application/json erwartet.": "Content-Type application/json expected.",
+    "Ungültiges JSON.": "Invalid JSON.",
+    "JSON-Objekt erwartet.": "JSON object expected.",
+    "Bitte anmelden.": "Please log in.",
+    "Unbekannte API-Route.": "Unknown API route.",
+    "Benutzername: 2-24 Zeichen (Buchstaben, Zahlen, Leerzeichen, _ . -).":
+        "Username: 2-24 characters (letters, numbers, spaces, _ . -).",
+    "Das Passwort muss 6 bis 128 Zeichen lang sein.": "The password must be 6 to 128 characters long.",
+    "Dieser Benutzername ist schon vergeben.": "This username is already taken.",
+    "Ungültige Eingabe.": "Invalid input.",
+    "Benutzername oder Passwort falsch.": "Wrong username or password.",
+    "Ungültiger Ansage-Modus.": "Invalid announcement mode.",
+    "Ungültige Sound-Auswahl.": "Invalid sound selection.",
+    "Diese Sounddatei gibt es nicht (mehr).": "This sound file does not exist (anymore).",
+    "Der Steam-Link muss mit https://steamcommunity.com/id/... oder https://steamcommunity.com/profiles/... beginnen.":
+        "The Steam link must start with https://steamcommunity.com/id/... or https://steamcommunity.com/profiles/...",
+    "Der Upload muss als multipart/form-data gesendet werden.": "The upload must be sent as multipart/form-data.",
+    "Ungültige Anfrage: Multipart-Boundary fehlt.": "Invalid request: multipart boundary is missing.",
+    "Keine Datei im Upload gefunden.": "No file found in the upload.",
+    "Dateityp nicht erlaubt (nur .wav, .mp3, .mp4).": "File type not allowed (only .wav, .mp3, .mp4).",
+    "Die Datei ist leer.": "The file is empty.",
+    "Das darf nur ein Admin.": "Only an admin may do that.",
+    "Sounddatei nicht gefunden.": "Sound file not found.",
+    "Ungültiger Wert.": "Invalid value.",
+    "Nutzer nicht gefunden.": "User not found.",
+    "Es muss mindestens ein Admin übrig bleiben.": "At least one admin must remain.",
+    "Du kannst dich nicht selbst löschen.": "You cannot delete yourself.",
+    "Nicht gefunden.": "Not found.",
+    "Methode nicht erlaubt.": "Method not allowed.",
+    "Unbekannte Aktion.": "Unknown action.",
+    "Spieler nicht gefunden.": "Player not found.",
+    "Runde nicht gefunden.": "Round not found.",
+    "Diesen Spieler gibt es schon.": "This player already exists.",
+    "Diese Runde gibt es schon.": "This round already exists.",
+    "Eintrag nicht gefunden.": "Entry not found.",
+    "Interner Serverfehler (Details im Terminal).": "Internal server error (details in the terminal).",
+    "Führungs-Test läuft am Host-PC.": "Leader test is playing on the host PC.",
+}
+EN_PATTERNS = [
+    (r"^(.+) darf nicht leer sein\.$", lambda m: "%s must not be empty." % _lab(m[1])),
+    (r"^(.+) ist zu lang \(max\. (\d+) Zeichen\)\.$", lambda m: "%s is too long (max. %s characters)." % (_lab(m[1]), m[2])),
+    (r"^(.+) enthält ungültige Zeichen\.$", lambda m: "%s contains invalid characters." % _lab(m[1])),
+    (r"^(.+): ungültiger Wert\.$", lambda m: "%s: invalid value." % _lab(m[1])),
+    (r"^(.+): ungültige Zahl\.$", lambda m: "%s: invalid number." % _lab(m[1])),
+    (r"^(.+): Zahl zwischen (-?\d+) und (-?\d+) erwartet\.$", lambda m: "%s: number between %s and %s expected." % (_lab(m[1]), m[2], m[3])),
+    (r"^Zu viele Registrierungen\. Bitte in (\d+) s erneut versuchen\.$", lambda m: "Too many registrations. Please try again in %s s." % m[1]),
+    (r"^Zu viele Fehlversuche\. Bitte in (\d+) s erneut versuchen\.$", lambda m: "Too many failed attempts. Please try again in %s s." % m[1]),
+    (r"^Datei zu groß \(max\. (\d+) MB\)\.$", lambda m: "File too large (max. %s MB)." % m[1]),
+    (r"^Der Inhalt passt nicht zur Endung (.+) \(keine gültige Audiodatei\)\.$", lambda m: "The content does not match the extension %s (not a valid audio file)." % m[1]),
+    (r"^Zu viele Spieler \(max\. (\d+)\)\.$", lambda m: "Too many players (max. %s)." % m[1]),
+    (r"^Zu viele Runden \(max\. (\d+)\)\.$", lambda m: "Too many rounds (max. %s)." % m[1]),
+    (r"^Zu viele Zeitplan-Einträge \(max\. (\d+)\)\.$", lambda m: "Too many schedule entries (max. %s)." % m[1]),
+    (r"^Bitte kurz warten \(Test-Sperre (\d+) s\)\.$", lambda m: "Please wait a moment (test lock %s s)." % m[1]),
+    (r"^Test läuft am Host-PC\.( \(Keine Sounddatei gewählt, es wird nur der Name angesagt\.\))?$",
+     lambda m: "Test is playing on the host PC." + (" (No sound file selected, only the name will be announced.)" if m[1] else "")),
+]
+
+
+def tr(msg, lang):
+    if lang != "en" or not isinstance(msg, str):
+        return msg
+    if msg in EN_EXACT:
+        return EN_EXACT[msg]
+    for pat, fn in EN_PATTERNS:
+        m = re.match(pat, msg)
+        if m:
+            return fn(m)
+    return msg
 
 
 # ----------------------------- Hilfsfunktionen -----------------------------
@@ -267,6 +357,7 @@ def me_view(u):
         "id": u["id"], "username": u["username"], "is_admin": bool(u.get("is_admin")),
         "steam_name": u.get("steam_name", ""), "steam_url": u.get("steam_url", ""),
         "mode": u.get("mode", "name"), "sound": u.get("sound", ""),
+        "lang": u.get("lang", DEFAULT_LANG),
     }
 
 
@@ -382,9 +473,11 @@ try {
   Add-Type -AssemblyName System.Speech
   $text = $env:HOST_AUDIO_TEXT
   if (-not $text) { throw 'Kein Text uebergeben.' }
+  $lang = $env:HOST_AUDIO_LANG
+  if (-not $lang) { $lang = 'de' }
   $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
   foreach ($v in $s.GetInstalledVoices()) {
-    if ($v.Enabled -and $v.VoiceInfo.Culture.Name -like 'de*') { $s.SelectVoice($v.VoiceInfo.Name); break }
+    if ($v.Enabled -and $v.VoiceInfo.Culture.Name -like ($lang + '*')) { $s.SelectVoice($v.VoiceInfo.Name); break }
   }
   $s.Volume = 100
   $s.SetOutputToDefaultAudioDevice()
@@ -453,18 +546,19 @@ def run_ps(script, extra_env, timeout):
 
 def play_step(step):
     """Spielt einen Schritt ab: ('file', pfad) oder ('say', text). Wirft AudioError bei Fehlern."""
-    kind, value = step
+    kind, value = step[0], step[1]
+    lang = step[2] if len(step) > 2 else "de"
     if kind == "file":
         log("[Host-Audio] spiele %s" % os.path.basename(value))
     else:
-        log("[Host-Audio] sage: %s" % value)
+        log("[Host-Audio] sage: %s" % value if lang == "de" else "[Host-Audio] sage (%s): %s" % (lang, value))
     if os.name != "nt":
         log("[Host-Audio] (Simulation: kein Windows, es wird nichts ausgegeben)")
         return
     if kind == "file":
         run_ps(PS_FILE, {"HOST_AUDIO_FILE": value}, 700)
     else:
-        run_ps(PS_SPEECH, {"HOST_AUDIO_TEXT": value}, 60)
+        run_ps(PS_SPEECH, {"HOST_AUDIO_TEXT": value, "HOST_AUDIO_LANG": lang}, 60)
 
 
 def audio_worker():
@@ -494,28 +588,33 @@ def steps_for_user(user, mode, sound, name=None):
     mode = mode if mode in MODES else "name"
     spath = sound_path(sound) if sound else None
     steps = []
-    said = ARRIVAL_PHRASE.replace("{name}", name)
+    lang = user.get("lang", DEFAULT_LANG)
+    said = (ARRIVAL_PHRASE_EN if lang == "en" else ARRIVAL_PHRASE).replace("{name}", name)
     if mode == "name":
-        steps.append(("say", said))
+        steps.append(("say", said, lang))
     else:
         if spath:
             steps.append(("file", spath))
         else:
             log("[Host-Audio] Hinweis: Modus '%s' ohne gültige Sounddatei, es wird nur der Name angesagt." % mode)
         if mode == "both" or not spath:
-            steps.append(("say", said))
+            steps.append(("say", said, lang))
     return steps
 
 
 def leader_steps(name):
     steps = []
+    lang = DEFAULT_LANG
     with LOCK:
         acct = find_user(name)
+        if acct:
+            lang = acct.get("lang", DEFAULT_LANG)
         if acct and acct.get("mode") in ("sound", "both"):
             sp = sound_path(acct.get("sound", ""))
             if sp:
                 steps.append(("file", sp))
-    steps.append(("say", LEADER_PHRASE.replace("{name}", name)))
+    phrase = LEADER_PHRASE_EN if lang == "en" else LEADER_PHRASE
+    steps.append(("say", phrase.replace("{name}", name), lang))
     return steps
 
 
@@ -792,6 +891,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         text = obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False)
         self.send_bytes(status, text.encode("utf-8"), "application/json; charset=utf-8", headers)
 
+    def lang(self):
+        return "en" if (self.headers.get("X-Lang") or "").lower() == "en" else "de"
+
     def origin_ok(self):
         o = self.headers.get("Origin")
         if not o:
@@ -838,10 +940,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 log("[404] %s %s" % (method, self.path))
             try:
                 self.drain_unread()
+                msg = tr(e.message, self.lang())
                 if path.startswith("/api/"):
-                    self.send_json({"error": e.message}, e.status)
+                    self.send_json({"error": msg}, e.status)
                 else:
-                    self.send_bytes(e.status, (str(e.status) + " " + e.message).encode("utf-8"),
+                    self.send_bytes(e.status, (str(e.status) + " " + msg).encode("utf-8"),
                                     "text/plain; charset=utf-8")
             except (OSError, ValueError):
                 pass
@@ -851,7 +954,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             log("[FEHLER] Unerwarteter Fehler bei %s %s" % (method, self.path))
             log(traceback.format_exc())
             try:
-                self.send_json({"error": "Interner Serverfehler (Details im Terminal)."}, 500)
+                self.send_json({"error": tr("Interner Serverfehler (Details im Terminal).", self.lang())}, 500)
             except (OSError, ValueError):
                 pass
 
@@ -936,6 +1039,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.send_json(state_json(user))
             if path == "/api/settings":
                 return self.api_settings(user)
+            if path == "/api/lang":
+                return self.api_lang(user)
             if path == "/api/upload":
                 return self.api_upload(user)
             if path == "/api/sounds/delete":
@@ -970,6 +1075,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             first = len(USERS) == 0
             user = {"id": secrets.token_hex(8), "username": name, "salt": rec["salt"], "hash": rec["hash"],
                     "is_admin": first, "steam_name": "", "steam_url": "", "mode": "name", "sound": "",
+                    "lang": d.get("lang") if d.get("lang") in LANGS else DEFAULT_LANG,
                     "created": int(time.time())}
             USERS[user["id"]] = user
             save_users()
@@ -1043,6 +1149,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with LOCK:
             u = USERS[user["id"]]
             u["steam_name"], u["steam_url"], u["mode"], u["sound"] = steam_name, url, mode, sound
+            save_users()
+            bump()
+        self.send_json(state_json(u))
+
+    def api_lang(self, user):
+        d = self.read_json()
+        lang = d.get("lang")
+        if lang not in LANGS:
+            raise ApiError(400, "Ungültiger Wert.")
+        with LOCK:
+            u = USERS[user["id"]]
+            u["lang"] = lang
             save_users()
             bump()
         self.send_json(state_json(u))
@@ -1133,7 +1251,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         note = ""
         if mode != "name" and not sound:
             note = " (Keine Sounddatei gewählt, es wird nur der Name angesagt.)"
-        self.send_json({"ok": True, "message": "Test läuft am Host-PC." + note})
+        self.send_json({"ok": True, "message": tr("Test läuft am Host-PC." + note, self.lang())})
 
     def api_test_leader(self, user):
         if not user.get("is_admin"):
@@ -1143,7 +1261,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         name = clean_text(d.get("name", user["username"]), "Name", 32)
         log("[Test] Führungs-Ansage für %s" % name)
         enqueue(leader_steps(name), "Test Führung")
-        self.send_json({"ok": True, "message": "Führungs-Test läuft am Host-PC."})
+        self.send_json({"ok": True, "message": tr("Führungs-Test läuft am Host-PC.", self.lang())})
 
     def api_user_admin(self, user):
         if not user.get("is_admin"):
