@@ -68,7 +68,8 @@ const I18N = {
     first_admin: 'Der erste Account auf diesem Server wird automatisch Admin.', logout: 'Abmelden',
     admin_suffix: ' (Admin)', conn_lost: '⚠ keine Verbindung', unreachable: 'Server nicht erreichbar. Läuft der Server noch?',
     tab_scores: 'Punkte', tab_hotdogs: 'Hotdogs', tab_schedule: 'Zeitplan', tab_info: 'Info',
-    tab_players: 'Spieler & Steam', tab_settings: 'Einstellungen', tab_admin: 'Admin',
+    tab_players: 'Spieler & Steam', tab_settings: 'Einstellungen', tab_admin: 'Admin', tab_about: 'Über',
+    about_title: 'Über ULan', about_text: 'ULan ist ein lokales Intranet für LAN-Partys: Punktestand, Zeitplan, Hotdog-Zähler, Infos und Ansagen am Host-PC. Der Quellcode liegt auf GitHub.', github_link: 'ULan auf GitHub ↗',
     add: 'Hinzufügen', del: 'Löschen', save: 'Speichern',
     ranking: 'Rangliste', no_players_admin: 'Noch keine Spieler. Ein Admin legt sie unten an.', player: 'Spieler', sum: 'Summe',
     delete_round_title: 'Runde löschen', delete_round_aria: 'Runde {0} löschen', confirm_round: 'Runde "{0}" samt Punkten löschen?',
@@ -104,7 +105,8 @@ const I18N = {
     first_admin: 'The first account on this server automatically becomes admin.', logout: 'Log out',
     admin_suffix: ' (admin)', conn_lost: '⚠ no connection', unreachable: 'Server not reachable. Is the server still running?',
     tab_scores: 'Scores', tab_hotdogs: 'Hotdogs', tab_schedule: 'Schedule', tab_info: 'Info',
-    tab_players: 'Players & Steam', tab_settings: 'Settings', tab_admin: 'Admin',
+    tab_players: 'Players & Steam', tab_settings: 'Settings', tab_admin: 'Admin', tab_about: 'About',
+    about_title: 'About ULan', about_text: 'ULan is a local intranet for LAN parties: scoreboard, schedule, hotdog counter, info and announcements on the host PC. The source code is on GitHub.', github_link: 'ULan on GitHub ↗',
     add: 'Add', del: 'Delete', save: 'Save',
     ranking: 'Ranking', no_players_admin: 'No players yet. An admin adds them below.', player: 'Player', sum: 'Total',
     delete_round_title: 'Delete round', delete_round_aria: 'Delete round {0}', confirm_round: 'Delete round "{0}" including its points?',
@@ -284,7 +286,9 @@ const TABS = [
   ['players', 'tab_players'],
   ['settings', 'tab_settings'],
   ['admin', 'tab_admin'],
+  ['about', 'tab_about'],
 ];
+const GITHUB_URL = 'https://github.com/jemandX/ULan';
 
 function render() {
   if (!state || !me) return;
@@ -296,7 +300,7 @@ function render() {
   tabs.replaceChildren(...list.map(([id, label]) =>
     h('button', { type: 'button', class: id === tab ? 'active' : '', onclick: () => { tab = id; render(); } }, t(label))));
   const fn = { scores: renderScores, hotdogs: renderHotdogs, schedule: renderSchedule, info: renderInfo,
-               players: renderPlayers, settings: renderSettings, admin: renderAdmin }[tab];
+               players: renderPlayers, settings: renderSettings, admin: renderAdmin, about: renderAbout }[tab];
   $('#view').replaceChildren(fn());
 }
 
@@ -324,16 +328,16 @@ function askText(label, payloadFn) {
 
 function renderScores() {
   const st = state;
-  const t = totalsOf();
+  const tot = totalsOf();
   const root = h('div');
-  const ranked = st.players.slice().sort((a, b) => t[b.id] - t[a.id]);
+  const ranked = st.players.slice().sort((a, b) => tot[b.id] - tot[a.id]);
 
   root.append(h('div', { class: 'card' }, h('h2', null, t('ranking')),
     ranked.length
       ? h('ol', { class: 'rank' }, ranked.map((p) =>
           h('li', { class: p.id === st.top ? 'leader' : '' },
             h('span', null, (p.id === st.top ? '★ ' : '') + p.name),
-            h('span', null, String(t[p.id])))))
+            h('span', null, String(tot[p.id])))))
       : h('p', { class: 'hint' }, t('no_players_admin'))));
 
   const head = h('tr', null, h('th', { class: 'name' }, t('player')),
@@ -355,7 +359,7 @@ function renderScores() {
       });
       return h('td', { class: 'num' }, inp);
     }),
-    h('td', { class: 'total' }, String(t[p.id])),
+    h('td', { class: 'total' }, String(tot[p.id])),
     me.is_admin ? h('td', null, h('button', { type: 'button', class: 'small danger', title: t('delete_player_title'),
       'aria-label': t('delete_player_aria', p.name),
       onclick: () => { if (confirm(t('confirm_player', p.name))) act({ action: 'player_delete', id: p.id }); } }, '✕')) : null));
@@ -537,6 +541,13 @@ function renderSettings() {
     soundRows.length ? h('ul', { class: 'list' }, soundRows) : h('p', { class: 'hint' }, t('no_sounds')));
 
   return h('div', null, settingsCard, uploadCard);
+}
+
+function renderAbout() {
+  return h('div', { class: 'card' }, h('h2', null, t('about_title')),
+    h('p', null, t('about_text')),
+    h('p', null, h('a', { href: GITHUB_URL, target: '_blank', rel: 'noopener noreferrer' }, t('github_link'))),
+    h('p', { class: 'hint' }, GITHUB_URL));
 }
 
 function renderAdmin() {
