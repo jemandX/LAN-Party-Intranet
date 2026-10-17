@@ -12,6 +12,7 @@ MAX_SOUND_SIZE = 10 * 1024 * 1024             # maximale Groesse einer Sounddate
 ANNOUNCE_ON_LOGIN = True                      # Ansage auch beim Login (nicht nur bei Registrierung)
 ANNOUNCE_LEADER = True                        # Ansage bei Wechsel auf Platz 1
 LEADER_PHRASE = "{name} übernimmt die Führung"
+ARRIVAL_PHRASE = "{name} ist beigetreten"       # Satz bei Ankunft (Modus "Name" bzw. "Sound, dann Name")
 # =======================================================================
 
 import base64
@@ -493,15 +494,16 @@ def steps_for_user(user, mode, sound, name=None):
     mode = mode if mode in MODES else "name"
     spath = sound_path(sound) if sound else None
     steps = []
+    said = ARRIVAL_PHRASE.replace("{name}", name)
     if mode == "name":
-        steps.append(("say", name))
+        steps.append(("say", said))
     else:
         if spath:
             steps.append(("file", spath))
         else:
             log("[Host-Audio] Hinweis: Modus '%s' ohne gültige Sounddatei, es wird nur der Name angesagt." % mode)
         if mode == "both" or not spath:
-            steps.append(("say", name))
+            steps.append(("say", said))
     return steps
 
 

@@ -1,0 +1,16 @@
+{
+ "users": [
+  {
+   "id": "40ff0b5b97023dd7",
+   "username": "schniedelmeister12",
+   "salt": "b11c863fbde829ba482999f26273b50f",
+   "hash": "c0396868d21bc4e228c9c3c5915194fa16b359c48dfc097525f40ea52fe66e55",
+   "is_admin": true,
+   "steam_name": "",
+   "steam_url": "",
+   "mode": "name",
+   "sound": "",
+   "created": 1792267993
+  }
+ ]
+}
