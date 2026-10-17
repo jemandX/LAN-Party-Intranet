@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>LAN-Party</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<section id="auth" hidden>
+  <div class="card authcard">
+    <h1>LAN-Party</h1>
+    <div class="seg">
+      <button type="button" id="showLogin" class="active">Anmelden</button>
+      <button type="button" id="showRegister">Registrieren</button>
+    </div>
+
+    <form id="loginForm" autocomplete="on">
+      <label for="loginUser">Benutzername</label>
+      <input id="loginUser" name="username" type="text" autocomplete="username" maxlength="24" required>
+      <label for="loginPass">Passwort</label>
+      <input id="loginPass" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+      <button type="submit" class="primary">Anmelden</button>
+    </form>
+
+    <form id="registerForm" autocomplete="on" hidden>
+      <label for="regUser">Benutzername (2-24 Zeichen)</label>
+      <input id="regUser" name="username" type="text" autocomplete="username" maxlength="24" required>
+      <label for="regPass">Passwort (mind. 6 Zeichen)</label>
+      <input id="regPass" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="128" required>
+      <button type="submit" class="primary">Konto erstellen</button>
+      <p class="hint">Der erste Account auf diesem Server wird automatisch Admin.</p>
+    </form>
+    <p id="authMsg" class="msg error" role="alert"></p>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <header>
+    <div class="brand">LAN-Party</div>
+    <div class="who">
+      <span id="conn" class="conn"></span>
+      <span id="whoami"></span>
+      <button type="button" id="logoutBtn">Abmelden</button>
+    </div>
+  </header>
+  <nav id="tabs" aria-label="Bereiche"></nav>
+  <main id="view"></main>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
