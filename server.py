@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-LAN-Party-Intranet - Server (nur Python 3 Standardbibliothek, optimiert fuer Windows 10/11)
+ULan - Server (nur Python 3 Standardbibliothek, optimiert fuer Windows 10/11)
 
 Start:  python server.py      (oder start.bat doppelklicken)
 """
@@ -1415,7 +1415,7 @@ def main():
         log("        Läuft der Server schon in einem anderen Fenster? Sonst PORT oben in server.py ändern.")
         sys.exit(1)
     log("=" * 60)
-    log(" LAN-Party-Intranet läuft")
+    log(" ULan läuft")
     log("   Dieser PC:  http://localhost:%d" % PORT)
     for ip in lan_ips():
         log("   Im LAN:     http://%s:%d" % (ip, PORT))

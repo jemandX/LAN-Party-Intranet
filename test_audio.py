@@ -49,7 +49,7 @@ def make_beep():
 
 
 def main():
-    print("LAN-Party Audio-Test")
+    print("ULan Audio-Test")
     print("Betriebssystem: %s | Python %s" % (os.name, sys.version.split()[0]))
     if os.name != "nt":
         print("HINWEIS: Das ist kein Windows. Es wird nur simuliert.")

@@ -1,4 +1,4 @@
-## **LAN-Party Intranet**
+## **LAN-Party Intranet (ULan)**
 This is a LAN-Party Intranet for small LAN parties.
 It's got a hotdog counter and a leaderboard w/ sounds.
 It's also in german and english.

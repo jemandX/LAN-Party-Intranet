@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title LAN-Party-Intranet
+title ULan
 where python >nul 2>nul
 if not errorlevel 1 goto haspython
 where py >nul 2>nul
