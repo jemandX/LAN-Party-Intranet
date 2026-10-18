@@ -27,7 +27,6 @@ Python is mandatory on the server PC.
 5. The window shows the addresses, e.g. `http://localhost:8080` and `http://192.168.x.x:8080`. Open the LAN address on the other devices.
 6. Register the **first account** (it becomes admin), add players and rounds, upload a sound under "Settings" and press "Test".
 
-More details are in the guide files that come with the download (`README.md` in English, `ANLEITUNG.md` in German).
 
 ## SETTINGS
 At the top of `server.py` you can change:
