@@ -10,7 +10,8 @@ It's also in German and English.
 - **Accounts** with login and logout. The first account becomes admin, admins can manage players, rounds, schedule, sounds and other accounts
 - **Steam links:** every player can add a Steam handle and profile link, shown in a "Players & Steam" list
 - **Sounds and announcements on the host PC:** upload `.wav`, `.mp3` or `.mp4` (max. 10 MB). When someone joins or takes first place, the server PC plays their sound and/or says their name
-- **German and English:** switch at the top right, the choice also sets the language of the announcements
+- **German and English:** switch on the login page or in Settings, the choice also sets the language of the announcements
+- **Leaderboard-only link:** a second port (default 8081) shows just the leaderboard, read-only and without login, e.g. for a TV or spectators
 - Works on phones and PCs, dark design, no internet needed, no extra Python packages
 
 ## INSTRUCTIONS
@@ -27,6 +28,10 @@ Python is mandatory on the server PC.
 5. The window shows the addresses, e.g. `http://localhost:8080` and `http://192.168.x.x:8080`. Open the LAN address on the other devices.
 6. Register the **first account** (it becomes admin), add players and rounds, upload a sound under "Settings" and press "Test".
 
+More details are in the guide files that come with the download (`README.md` in English, `ANLEITUNG.md` in German).
+
+### Leaderboard-only link
+The server also prints a second address, e.g. `http://192.168.x.x:8081`. It shows **only** the leaderboard (names, totals, leader) and needs no login. Nothing else is reachable on that port. To share it outside your LAN, forward **only** that port on your router, never the main port (8080). ULan uses plain HTTP.
 
 ## SETTINGS
 At the top of `server.py` you can change:
@@ -40,6 +45,7 @@ At the top of `server.py` you can change:
 | `ARRIVAL_PHRASE` / `ARRIVAL_PHRASE_EN` | Sentence when someone joins, `{name}` is replaced |
 | `LEADER_PHRASE` / `LEADER_PHRASE_EN` | Sentence when someone takes the lead |
 | `DEFAULT_LANG` | `"de"` or `"en"` for new accounts |
+| `LEADERBOARD_PORT` | Second port with the leaderboard only, no login (default 8081, `0` = off) |
 
 ## TROUBLESHOOTING
 - **Others can't open the page:** allow Python in Windows Firewall and use the `192.168.x.x` address from the terminal, not `localhost`.

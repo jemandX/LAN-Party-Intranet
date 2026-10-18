@@ -16,6 +16,7 @@ ARRIVAL_PHRASE = "{name} ist beigetreten"       # Satz bei Ankunft (Modus "Name"
 LEADER_PHRASE_EN = "{name} takes the lead"    # englische Variante der Fuehrungs-Ansage
 ARRIVAL_PHRASE_EN = "{name} has joined"       # englische Variante der Ankunfts-Ansage
 DEFAULT_LANG = "de"                           # Sprache fuer neue Konten und Spieler ohne Konto ("de" oder "en")
+LEADERBOARD_PORT = 8081                       # zweiter Port: NUR Rangliste, ohne Login, nur lesen (0 = aus)
 # =======================================================================
 
 import base64
@@ -84,6 +85,7 @@ USERS = {}      # id -> dict
 SESSIONS = {}   # sha256(token) -> {"uid":..., "exp":...}
 STATE = {}
 LEADER = {"id": None, "last_announce": 0.0}
+PUBLIC = {"running": False}
 ARRIVAL_LAST = {}
 TEST_LAST = {}
 FAILS = {}      # Rate-Limit: key -> [timestamps]
@@ -684,6 +686,16 @@ def leader_check(initial=False):
     enqueue(leader_steps(name), "Führungs-Ansage")
 
 
+def leaderboard_json():
+    """Nur Name, Summe und Fuehrungs-Markierung. Keine Konten, Runden, Hotdogs oder Infos."""
+    with LOCK:
+        t = totals()
+        top = top_player_id()
+        rows = [{"name": p["name"], "total": t[p["id"]], "leader": p["id"] == top} for p in STATE["players"]]
+    rows.sort(key=lambda r: -r["total"])
+    return json.dumps({"players": rows}, ensure_ascii=False)
+
+
 def top_player_id():
     kind, val = leader_status()
     return val if kind == "unique" else None
@@ -818,6 +830,7 @@ def state_json(user):
             "schedule": STATE["schedule"],
             "info": STATE["info"],
             "top": top_player_id(),
+            "leaderboard_port": LEADERBOARD_PORT if PUBLIC["running"] else 0,
             "sounds": list_sounds(),
             "users": [{"username": u["username"], "steam_name": u.get("steam_name", ""),
                        "steam_url": u.get("steam_url", "")}
@@ -1388,10 +1401,75 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 remaining -= len(chunk)
 
 
+class PublicHandler(Handler):
+    """Zweiter Port: zeigt NUR die Rangliste. Kein Login, nur GET/HEAD, nur drei feste Dateien."""
+    PUBLIC_FILES = {
+        "/": ("leaderboard.html", ".html"),
+        "/index.html": ("leaderboard.html", ".html"),
+        "/leaderboard.js": ("leaderboard.js", ".js"),
+        "/style.css": ("style.css", ".css"),
+    }
+
+    def dispatch(self, method):
+        self.method = method
+        self.body_read = False
+        path = urlsplit(self.path).path
+        try:
+            if method not in ("GET", "HEAD"):
+                raise ApiError(405, "Methode nicht erlaubt.")
+            if path in self.PUBLIC_FILES:
+                fname, ext = self.PUBLIC_FILES[path]
+                self.send_file(os.path.join(STATIC_DIR, fname), STATIC_MIME[ext], "no-cache")
+            elif path == "/api/leaderboard":
+                self.send_json(leaderboard_json())
+            elif path == "/favicon.ico":
+                self.send_bytes(204, b"", "image/x-icon")
+            else:
+                raise ApiError(404, "Nicht gefunden.")
+        except ApiError as e:
+            if e.status == 404:
+                log("[404] %s %s (Ranglisten-Port)" % (method, self.path))
+            try:
+                self.drain_unread()
+                msg = tr(e.message, self.lang())
+                if path.startswith("/api/"):
+                    self.send_json({"error": msg}, e.status)
+                else:
+                    self.send_bytes(e.status, (str(e.status) + " " + msg).encode("utf-8"),
+                                    "text/plain; charset=utf-8")
+            except (OSError, ValueError):
+                pass
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout):
+            pass
+        except Exception:
+            log("[FEHLER] Unerwarteter Fehler bei %s %s (Ranglisten-Port)" % (method, self.path))
+            log(traceback.format_exc())
+            try:
+                self.send_json({"error": tr("Interner Serverfehler (Details im Terminal).", self.lang())}, 500)
+            except (OSError, ValueError):
+                pass
+
+
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = (os.name != "nt")
     request_queue_size = 64
+
+
+def start_public_server():
+    if not LEADERBOARD_PORT:
+        return None
+    if LEADERBOARD_PORT == PORT:
+        log("[WARNUNG] LEADERBOARD_PORT darf nicht gleich PORT sein. Ranglisten-Link ist aus.")
+        return None
+    try:
+        srv = Server(("0.0.0.0", LEADERBOARD_PORT), PublicHandler)
+    except OSError as e:
+        log("[WARNUNG] Ranglisten-Port %d kann nicht geöffnet werden: %s (Rest läuft normal)" % (LEADERBOARD_PORT, e))
+        return None
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    PUBLIC["running"] = True
+    return srv
 
 
 def main():
@@ -1414,11 +1492,17 @@ def main():
         log("[FEHLER] Port %d kann nicht geöffnet werden: %s" % (PORT, e))
         log("        Läuft der Server schon in einem anderen Fenster? Sonst PORT oben in server.py ändern.")
         sys.exit(1)
+    public_server = start_public_server()
     log("=" * 60)
     log(" ULan läuft")
     log("   Dieser PC:  http://localhost:%d" % PORT)
     for ip in lan_ips():
         log("   Im LAN:     http://%s:%d" % (ip, PORT))
+    if PUBLIC["running"]:
+        log(" Nur Rangliste (ohne Login, zum Teilen):")
+        log("   http://localhost:%d" % LEADERBOARD_PORT)
+        for ip in lan_ips():
+            log("   http://%s:%d" % (ip, LEADERBOARD_PORT))
     log(" Beenden mit Strg+C")
     if os.name != "nt":
         log(" HINWEIS: Kein Windows erkannt. Host-Audio wird nur simuliert.")
@@ -1431,6 +1515,8 @@ def main():
         log("\nServer beendet.")
     finally:
         server.server_close()
+        if public_server:
+            public_server.server_close()
 
 
 if __name__ == "__main__":
