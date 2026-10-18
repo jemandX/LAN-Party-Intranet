@@ -89,7 +89,7 @@ const I18N = {
     my_settings: 'Meine Einstellungen', steam_handle: 'Steam-Handle (Anzeigename)', steam_link: 'Steam-Community-Link',
     mode_label: 'Ansage-Modus (läuft am Host-PC)', mode_name: 'Nur Name ansagen', mode_sound: 'Nur Sound abspielen', mode_both: 'Erst Sound, dann Name',
     sound_file: 'Sound-Datei', no_sound: '(kein Sound)', test_btn: 'Testen (am Host-PC)', test_leader_btn: 'Führungs-Ansage testen',
-    saved: 'Einstellungen gespeichert.', lang_hint: 'Die Ansagen am Host-PC werden in der gewählten Sprache (DE/EN) gesprochen.',
+    saved: 'Einstellungen gespeichert.', language: 'Sprache', lang_hint: 'Die Ansagen am Host-PC werden in der gewählten Sprache (DE/EN) gesprochen.',
     upload_title: 'Sound hochladen', upload_hint: 'Erlaubt: .wav, .mp3, .mp4 bis 10 MB. Die Wiedergabe passiert am Host-PC, nicht auf deinem Gerät.',
     upload_btn: 'Hochladen', choose_file: 'Bitte zuerst eine Datei wählen.', uploading: 'Lade hoch …', uploaded: 'Hochgeladen: {0}',
     upload_failed: 'Upload fehlgeschlagen: {0}', existing: 'Vorhandene Sounds', no_sounds: 'Noch keine Sounds hochgeladen.',
@@ -126,7 +126,7 @@ const I18N = {
     my_settings: 'My settings', steam_handle: 'Steam handle (display name)', steam_link: 'Steam Community link',
     mode_label: 'Announcement mode (plays on the host PC)', mode_name: 'Announce name only', mode_sound: 'Play sound only', mode_both: 'Sound first, then name',
     sound_file: 'Sound file', no_sound: '(no sound)', test_btn: 'Test (on host PC)', test_leader_btn: 'Test leader announcement',
-    saved: 'Settings saved.', lang_hint: 'Announcements on the host PC are spoken in the selected language (DE/EN).',
+    saved: 'Settings saved.', language: 'Language', lang_hint: 'Announcements on the host PC are spoken in the selected language (DE/EN).',
     upload_title: 'Upload sound', upload_hint: 'Allowed: .wav, .mp3, .mp4 up to 10 MB. Playback happens on the host PC, not on your device.',
     upload_btn: 'Upload', choose_file: 'Please choose a file first.', uploading: 'Uploading …', uploaded: 'Uploaded: {0}',
     upload_failed: 'Upload failed: {0}', existing: 'Available sounds', no_sounds: 'No sounds uploaded yet.',
@@ -453,6 +453,10 @@ function renderSettings() {
   const d = draft.settings;
   if (d.sound && !st.sounds.includes(d.sound)) d.sound = '';
 
+  const langSel = h('select', { 'aria-label': t('language') },
+    h('option', { value: 'de' }, 'Deutsch'), h('option', { value: 'en' }, 'English'));
+  langSel.value = lang;
+  langSel.addEventListener('change', () => { chooseLang(langSel.value); });
   const name = h('input', { type: 'text', maxlength: '32', value: d.steam_name, autocomplete: 'off' });
   name.addEventListener('input', () => { d.steam_name = name.value; });
   const url = h('input', { type: 'url', maxlength: '200', placeholder: 'https://steamcommunity.com/id/deinname', value: d.steam_url, autocomplete: 'off' });
@@ -491,6 +495,7 @@ function renderSettings() {
   };
 
   const settingsCard = h('div', { class: 'card' }, h('h2', null, t('my_settings')),
+    h('label', null, t('language')), langSel,
     h('label', null, t('steam_handle')), name,
     h('label', null, t('steam_link')), url,
     h('label', null, t('mode_label')), mode,
