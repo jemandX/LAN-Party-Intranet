@@ -142,3 +142,6 @@ ol.lb li.leader { border-color: var(--gold); background: rgba(255, 200, 61, .14)
 ol.lb .rank { color: var(--muted); text-align: center; }
 ol.lb li.leader .rank { color: var(--gold); }
 ol.lb .pts { font-weight: 800; }
+
+.badge.away { margin-left: .5rem; color: var(--danger); border-color: var(--danger); }
+tr.away td, ol.rank li.away, ol.lb li.away { opacity: .6; }

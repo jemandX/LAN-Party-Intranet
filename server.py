@@ -17,6 +17,7 @@ LEADER_PHRASE_EN = "{name} takes the lead"    # englische Variante der Fuehrungs
 ARRIVAL_PHRASE_EN = "{name} has joined"       # englische Variante der Ankunfts-Ansage
 DEFAULT_LANG = "de"                           # Sprache fuer neue Konten und Spieler ohne Konto ("de" oder "en")
 LEADERBOARD_PORT = 8081                       # zweiter Port: NUR Rangliste, ohne Login, nur lesen (0 = aus)
+ANNOUNCE_LEAVE = True                         # Ansage, wenn jemand "Ich bin weg" drueckt (Saetze stellt der Admin ein)
 # =======================================================================
 
 import base64
@@ -26,6 +27,7 @@ import http.server
 import json
 import os
 import queue
+import random
 import re
 import secrets
 import socket
@@ -62,6 +64,11 @@ MAX_SCHEDULE = 60
 MAX_INFO = 5000
 MODES = ("name", "sound", "both")
 LANGS = ("de", "en")
+MAX_LEAVE_PHRASES = 20
+LEAVE_PHRASES_DEFAULT = {
+    "de": ["{name} ist kurz weg", "{name} macht eine Pause"],
+    "en": ["{name} is away for a moment", "{name} is taking a break"],
+}
 
 SOUND_EXT = (".wav", ".mp3", ".mp4")
 SOUND_MIME = {".wav": "audio/wav", ".mp3": "audio/mpeg", ".mp4": "video/mp4"}
@@ -87,6 +94,7 @@ STATE = {}
 LEADER = {"id": None, "last_announce": 0.0}
 PUBLIC = {"running": False}
 ARRIVAL_LAST = {}
+LEAVE_LAST = {}
 TEST_LAST = {}
 FAILS = {}      # Rate-Limit: key -> [timestamps]
 AUDIO_Q = queue.Queue(maxsize=30)
@@ -106,7 +114,7 @@ class AudioError(Exception):
 # ----------------------------- Uebersetzung der Server-Meldungen -----------------------------
 LABELS_EN = {"Spielername": "Player name", "Rundenname": "Round name", "Uhrzeit": "Time", "Titel": "Title",
              "Info-Text": "Info text", "Benutzername": "Username", "Steam-Handle": "Steam handle",
-             "Steam-Link": "Steam link", "Name": "Name", "Punkte": "Points", "Änderung": "Change"}
+             "Steam-Link": "Steam link", "Name": "Name", "Punkte": "Points", "Änderung": "Change", "Leave-Satz": "Leave phrase"}
 
 
 def _lab(x):
@@ -156,6 +164,7 @@ EN_EXACT = {
     "Eintrag nicht gefunden.": "Entry not found.",
     "Interner Serverfehler (Details im Terminal).": "Internal server error (details in the terminal).",
     "Führungs-Test läuft am Host-PC.": "Leader test is playing on the host PC.",
+    "Zu viele Sätze (max. 20 pro Sprache).": "Too many phrases (max. 20 per language).",
 }
 EN_PATTERNS = [
     (r"^(.+) darf nicht leer sein\.$", lambda m: "%s must not be empty." % _lab(m[1])),
@@ -187,6 +196,11 @@ def tr(msg, lang):
         if m:
             return fn(m)
     return msg
+
+
+def fill_phrase(phrase, name):
+    """Ersetzt {name} (Gross-/Kleinschreibung egal) durch den Namen."""
+    return re.sub(r"\{name\}", lambda m: name, phrase, flags=re.IGNORECASE)
 
 
 # ----------------------------- Hilfsfunktionen -----------------------------
@@ -283,6 +297,8 @@ def load_all():
     STATE.setdefault("hotdogs", {})
     STATE.setdefault("schedule", [])
     STATE.setdefault("info", "")
+    STATE.setdefault("away", [])
+    STATE.setdefault("leave_phrases", {})
 
 
 # ----------------------------- Passwort & Sessions -----------------------------
@@ -591,7 +607,7 @@ def steps_for_user(user, mode, sound, name=None):
     spath = sound_path(sound) if sound else None
     steps = []
     lang = user.get("lang", DEFAULT_LANG)
-    said = (ARRIVAL_PHRASE_EN if lang == "en" else ARRIVAL_PHRASE).replace("{name}", name)
+    said = fill_phrase(ARRIVAL_PHRASE_EN if lang == "en" else ARRIVAL_PHRASE, name)
     if mode == "name":
         steps.append(("say", said, lang))
     else:
@@ -616,7 +632,7 @@ def leader_steps(name):
             if sp:
                 steps.append(("file", sp))
     phrase = LEADER_PHRASE_EN if lang == "en" else LEADER_PHRASE
-    steps.append(("say", phrase.replace("{name}", name), lang))
+    steps.append(("say", fill_phrase(phrase, name), lang))
     return steps
 
 
@@ -691,7 +707,9 @@ def leaderboard_json():
     with LOCK:
         t = totals()
         top = top_player_id()
-        rows = [{"name": p["name"], "total": t[p["id"]], "leader": p["id"] == top} for p in STATE["players"]]
+        away = set(STATE.get("away", []))
+        rows = [{"name": p["name"], "total": t[p["id"]], "leader": p["id"] == top,
+                 "away": p["name"].casefold() in away} for p in STATE["players"]]
     rows.sort(key=lambda r: -r["total"])
     return json.dumps({"players": rows}, ensure_ascii=False)
 
@@ -754,6 +772,9 @@ def act_player_add(d):
 def act_player_delete(d):
     need_player(d.get("id"))
     pid = d["id"]
+    gone = player_name(pid).casefold()
+    if gone in STATE["away"]:
+        STATE["away"].remove(gone)
     STATE["players"] = [p for p in STATE["players"] if p["id"] != pid]
     STATE["scores"].pop(pid, None)
     STATE["hotdogs"].pop(pid, None)
@@ -807,8 +828,74 @@ ADMIN_ACTIONS = {"player_add", "player_delete", "round_add", "round_delete",
                  "schedule_add", "schedule_delete", "info_set"}
 
 
+def announce_leave(name):
+    if not ANNOUNCE_LEAVE:
+        return
+    key = name.casefold()
+    now = time.monotonic()
+    with LOCK:
+        if now - LEAVE_LAST.get(key, -1e9) < ARRIVAL_COOLDOWN:
+            log("[Weg] Ansage für %s unterdrückt (Sperre %d s)" % (name, ARRIVAL_COOLDOWN))
+            return
+        LEAVE_LAST[key] = now
+        acct = find_user(name)
+        lang = acct.get("lang", DEFAULT_LANG) if acct else DEFAULT_LANG
+        if lang not in LANGS:
+            lang = DEFAULT_LANG
+        phrases = STATE.get("leave_phrases", {}).get(lang) or LEAVE_PHRASES_DEFAULT[lang]
+    text = fill_phrase(random.choice(phrases), name)
+    enqueue([("say", text, lang)], "Leave-Ansage")
+
+
+def do_away(user, d):
+    flag = d.get("away")
+    if not isinstance(flag, bool):
+        raise ApiError(400, "Ungültiger Wert.")
+    name = d.get("name")
+    if name is None:
+        name = user["username"]
+    name = clean_text(name, "Name", 32)
+    key = name.casefold()
+    if key != user["username"].casefold() and not user.get("is_admin"):
+        raise ApiError(403, "Das darf nur ein Admin.")
+    with LOCK:
+        away = STATE.setdefault("away", [])
+        if flag and key not in away:
+            away.append(key)
+        elif not flag and key in away:
+            away.remove(key)
+        else:
+            return
+        bump()
+    log("[Anwesenheit] %s ist %s" % (name, "weg" if flag else "wieder da"))
+    if flag:
+        announce_leave(name)
+
+
+def do_leave_phrases(user, d):
+    if not user.get("is_admin"):
+        raise ApiError(403, "Das darf nur ein Admin.")
+    out = {}
+    for lang in LANGS:
+        raw = d.get(lang, "")
+        if not isinstance(raw, str):
+            raise ApiError(400, "Ungültiger Wert.")
+        lines = [ln.strip() for ln in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n") if ln.strip()]
+        if len(lines) > MAX_LEAVE_PHRASES:
+            raise ApiError(400, "Zu viele Sätze (max. %d pro Sprache)." % MAX_LEAVE_PHRASES)
+        out[lang] = [clean_text(ln, "Leave-Satz", 80) for ln in lines]
+    with LOCK:
+        STATE["leave_phrases"] = out
+        bump()
+    log("[Konto] Leave-Sätze geändert von %s" % user["username"])
+
+
 def do_action(user, d):
     act = d.get("action")
+    if act == "away_set":
+        return do_away(user, d)
+    if act == "leave_phrases_set":
+        return do_leave_phrases(user, d)
     if not isinstance(act, str) or act not in ACTIONS:
         raise ApiError(400, "Unbekannte Aktion.")
     if act in ADMIN_ACTIONS and not user.get("is_admin"):
@@ -821,9 +908,12 @@ def do_action(user, d):
 
 def state_json(user):
     with LOCK:
+        away = set(STATE.get("away", []))
+        me = me_view(user)
+        me["away"] = user["username"].casefold() in away
         d = {
             "rev": STATE["rev"],
-            "players": STATE["players"],
+            "players": [dict(p, away=p["name"].casefold() in away) for p in STATE["players"]],
             "rounds": STATE["rounds"],
             "scores": STATE["scores"],
             "hotdogs": STATE["hotdogs"],
@@ -835,9 +925,10 @@ def state_json(user):
             "users": [{"username": u["username"], "steam_name": u.get("steam_name", ""),
                        "steam_url": u.get("steam_url", "")}
                       for u in sorted(USERS.values(), key=lambda x: x["username"].casefold())],
-            "me": me_view(user),
+            "me": me,
         }
         if user.get("is_admin"):
+            d["leave_phrases"] = {lg: STATE.get("leave_phrases", {}).get(lg) or LEAVE_PHRASES_DEFAULT[lg] for lg in LANGS}
             d["accounts"] = [{"id": u["id"], "username": u["username"], "is_admin": bool(u.get("is_admin"))}
                              for u in sorted(USERS.values(), key=lambda x: x["username"].casefold())]
         return json.dumps(d, ensure_ascii=False)

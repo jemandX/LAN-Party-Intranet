@@ -89,7 +89,11 @@ const I18N = {
     my_settings: 'Meine Einstellungen', steam_handle: 'Steam-Handle (Anzeigename)', steam_link: 'Steam-Community-Link',
     mode_label: 'Ansage-Modus (läuft am Host-PC)', mode_name: 'Nur Name ansagen', mode_sound: 'Nur Sound abspielen', mode_both: 'Erst Sound, dann Name',
     sound_file: 'Sound-Datei', no_sound: '(kein Sound)', test_btn: 'Testen (am Host-PC)', test_leader_btn: 'Führungs-Ansage testen',
-    saved: 'Einstellungen gespeichert.', language: 'Sprache', lb_link: 'Nur-Rangliste-Link (zum Teilen, ohne Login): ', lang_hint: 'Die Ansagen am Host-PC werden in der gewählten Sprache (DE/EN) gesprochen.',
+    saved: 'Einstellungen gespeichert.', away_btn: 'Ich bin weg', back_btn: 'Ich bin zurück', away_badge: 'abwesend', here: 'da',
+    presence_title: 'Anwesenheit', set_away: 'Abwesend setzen', set_present: 'Anwesend setzen',
+    leave_title: 'Leave-Sätze (wenn jemand „Ich bin weg“ drückt)',
+    leave_hint: 'Eine Zeile pro Satz, {0} wird durch den Namen ersetzt. Es wird zufällig ein Satz gewählt. Leer lassen = Standardsätze.',
+    leave_saved: 'Leave-Sätze gespeichert.', language: 'Sprache', lb_link: 'Nur-Rangliste-Link (zum Teilen, ohne Login): ', lang_hint: 'Die Ansagen am Host-PC werden in der gewählten Sprache (DE/EN) gesprochen.',
     upload_title: 'Sound hochladen', upload_hint: 'Erlaubt: .wav, .mp3, .mp4 bis 10 MB. Die Wiedergabe passiert am Host-PC, nicht auf deinem Gerät.',
     upload_btn: 'Hochladen', choose_file: 'Bitte zuerst eine Datei wählen.', uploading: 'Lade hoch …', uploaded: 'Hochgeladen: {0}',
     upload_failed: 'Upload fehlgeschlagen: {0}', existing: 'Vorhandene Sounds', no_sounds: 'Noch keine Sounds hochgeladen.',
@@ -126,7 +130,11 @@ const I18N = {
     my_settings: 'My settings', steam_handle: 'Steam handle (display name)', steam_link: 'Steam Community link',
     mode_label: 'Announcement mode (plays on the host PC)', mode_name: 'Announce name only', mode_sound: 'Play sound only', mode_both: 'Sound first, then name',
     sound_file: 'Sound file', no_sound: '(no sound)', test_btn: 'Test (on host PC)', test_leader_btn: 'Test leader announcement',
-    saved: 'Settings saved.', language: 'Language', lb_link: 'Leaderboard-only link (shareable, no login): ', lang_hint: 'Announcements on the host PC are spoken in the selected language (DE/EN).',
+    saved: 'Settings saved.', away_btn: "I'm away", back_btn: "I'm back", away_badge: 'away', here: 'here',
+    presence_title: 'Presence', set_away: 'Mark as away', set_present: 'Mark as present',
+    leave_title: 'Leave phrases (when someone presses "I\'m away")',
+    leave_hint: 'One phrase per line, {0} is replaced by the name. A random phrase is chosen. Leave empty = default phrases.',
+    leave_saved: 'Leave phrases saved.', language: 'Language', lb_link: 'Leaderboard-only link (shareable, no login): ', lang_hint: 'Announcements on the host PC are spoken in the selected language (DE/EN).',
     upload_title: 'Upload sound', upload_hint: 'Allowed: .wav, .mp3, .mp4 up to 10 MB. Playback happens on the host PC, not on your device.',
     upload_btn: 'Upload', choose_file: 'Please choose a file first.', uploading: 'Uploading …', uploaded: 'Uploaded: {0}',
     upload_failed: 'Upload failed: {0}', existing: 'Available sounds', no_sounds: 'No sounds uploaded yet.',
@@ -180,7 +188,7 @@ let state = null;
 let me = null;
 let tab = 'scores';
 let pendingRender = false;
-const draft = { settings: null };
+const draft = { settings: null, leave: null };
 
 function busy() {
   const a = document.activeElement;
@@ -259,6 +267,7 @@ function setupAuth() {
       await api(path, { json: { username: form.elements.username.value, password: form.elements.password.value, lang } });
       form.reset();
       draft.settings = null;
+      draft.leave = null;
       await refresh(true);
       showApp();
     } catch (e) {
@@ -273,6 +282,7 @@ function setupAuth() {
   $('#logoutBtn').addEventListener('click', async () => {
     try { await api('/api/logout', { json: {} }); } catch (e) { /* ignoriert */ }
     draft.settings = null;
+    draft.leave = null;
     showAuth();
   });
 }
@@ -293,6 +303,9 @@ const GITHUB_URL = 'https://github.com/jemandX/ULan';
 function render() {
   if (!state || !me) return;
   showApp();
+  const ab = $('#awayBtn');
+  ab.textContent = me.away ? t('back_btn') : t('away_btn');
+  ab.classList.toggle('primary', !!me.away);
   $('#whoami').textContent = me.username + (me.is_admin ? t('admin_suffix') : '');
   const tabs = $('#tabs');
   const list = TABS.filter(([id]) => id !== 'admin' || me.is_admin);
@@ -335,8 +348,8 @@ function renderScores() {
   root.append(h('div', { class: 'card' }, h('h2', null, t('ranking')),
     ranked.length
       ? h('ol', { class: 'rank' }, ranked.map((p) =>
-          h('li', { class: p.id === st.top ? 'leader' : '' },
-            h('span', null, (p.id === st.top ? '★ ' : '') + p.name),
+          h('li', { class: (p.id === st.top ? 'leader' : '') + (p.away ? ' away' : '') },
+            h('span', null, (p.id === st.top ? '★ ' : '') + p.name, p.away ? h('span', { class: 'badge away' }, t('away_badge')) : null),
             h('span', null, String(tot[p.id])))))
       : h('p', { class: 'hint' }, t('no_players_admin'))));
 
@@ -348,8 +361,8 @@ function renderScores() {
     h('th', { class: 'num' }, t('sum')),
     me.is_admin ? h('th', null, '') : null);
 
-  const body = st.players.map((p) => h('tr', { class: p.id === st.top ? 'leader' : '' },
-    h('td', { class: 'name' }, (p.id === st.top ? '★ ' : '') + p.name),
+  const body = st.players.map((p) => h('tr', { class: (p.id === st.top ? 'leader' : '') + (p.away ? ' away' : '') },
+    h('td', { class: 'name' }, (p.id === st.top ? '★ ' : '') + p.name, p.away ? h('span', { class: 'badge away' }, t('away_badge')) : null),
     st.rounds.map((r) => {
       const val = (st.scores[p.id] || {})[r.id];
       const inp = h('input', { type: 'number', inputmode: 'numeric', step: '1', class: 'cell',
@@ -558,7 +571,47 @@ function renderAbout() {
     h('p', { class: 'hint' }, GITHUB_URL));
 }
 
+function renderPresenceCard() {
+  const rows = state.players.map((p) => h('li', null,
+    h('strong', null, p.name),
+    p.away ? h('span', { class: 'badge away' }, t('away_badge')) : h('span', { class: 'badge' }, t('here')),
+    h('span', { class: 'grow' }),
+    h('button', { type: 'button', class: 'small', onclick: () => act({ action: 'away_set', name: p.name, away: !p.away }) },
+      p.away ? t('set_present') : t('set_away'))));
+  return h('div', { class: 'card' }, h('h2', null, t('presence_title')),
+    rows.length ? h('ul', { class: 'list' }, rows) : h('p', { class: 'hint' }, t('no_players_short')));
+}
+
+function renderLeaveCard() {
+  const lp = state.leave_phrases || { de: [], en: [] };
+  if (!draft.leave) draft.leave = { de: (lp.de || []).join('\n'), en: (lp.en || []).join('\n') };
+  const d = draft.leave;
+  const field = (code, label) => {
+    const ta = h('textarea', { 'aria-label': label, maxlength: '2000', rows: '5', value: d[code] });
+    ta.addEventListener('input', () => { d[code] = ta.value; });
+    return [h('label', null, label), ta];
+  };
+  const msg = h('p', { class: 'msg', role: 'status' });
+  const save = async () => {
+    try {
+      const st = await api('/api/action', { json: { action: 'leave_phrases_set', de: d.de, en: d.en } });
+      draft.leave = null;
+      applyState(st, true);
+      toast(t('leave_saved'));
+    } catch (e) { msg.className = 'msg error'; msg.textContent = e.message; }
+  };
+  return h('div', { class: 'card' }, h('h2', null, t('leave_title')),
+    h('p', { class: 'hint' }, t('leave_hint', '{name}')),
+    field('de', 'Deutsch'), field('en', 'English'),
+    h('div', { class: 'spacer' }),
+    h('button', { type: 'button', class: 'primary', onclick: save }, t('save')), msg);
+}
+
 function renderAdmin() {
+  return h('div', null, renderLeaveCard(), renderPresenceCard(), renderAccounts());
+}
+
+function renderAccounts() {
   const accounts = state.accounts || [];
   const rows = accounts.map((a) => {
     const isMe = a.id === me.id;
@@ -604,6 +657,7 @@ async function boot() {
   applyStaticI18n();
   document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => chooseLang(b.dataset.lang)));
   setupAuth();
+  $('#awayBtn').addEventListener('click', () => { if (me) act({ action: 'away_set', away: !me.away }); });
   const view = $('#view');
   view.addEventListener('focusout', () => setTimeout(flushPending, 200));
   view.addEventListener('pause', () => setTimeout(flushPending, 200), true);

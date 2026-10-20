@@ -1,8 +1,8 @@
 'use strict';
 
 const TEXT = {
-  de: { title: 'Rangliste', empty: 'Noch keine Spieler oder Punkte.', conn: '⚠ keine Verbindung' },
-  en: { title: 'Leaderboard', empty: 'No players or points yet.', conn: '⚠ no connection' },
+  de: { title: 'Rangliste', empty: 'Noch keine Spieler oder Punkte.', conn: '⚠ keine Verbindung', away: 'abwesend', absent: 'Nicht anwesend: ' },
+  en: { title: 'Leaderboard', empty: 'No players or points yet.', conn: '⚠ no connection', away: 'away', absent: 'Not present: ' },
 };
 
 function startLang() {
@@ -27,15 +27,26 @@ function render() {
   const list = document.getElementById('lbList');
   const empty = document.getElementById('lbEmpty');
   empty.hidden = rows.length > 0;
+  const absent = rows.filter((r) => r.away).map((r) => r.name);
+  const awayLine = document.getElementById('lbAway');
+  awayLine.hidden = absent.length === 0;
+  awayLine.textContent = TEXT[lang].absent + absent.join(', ');
   list.replaceChildren(...rows.map((r) => {
     const rank = 1 + rows.filter((o) => o.total > r.total).length;
     const li = document.createElement('li');
-    if (r.leader) li.className = 'leader';
+    if (r.leader) li.classList.add('leader');
+    if (r.away) li.classList.add('away');
     const a = document.createElement('span');
     a.className = 'rank';
     a.textContent = String(rank);
     const b = document.createElement('span');
     b.textContent = (r.leader ? '★ ' : '') + r.name;
+    if (r.away) {
+      const badge = document.createElement('span');
+      badge.className = 'badge away';
+      badge.textContent = TEXT[lang].away;
+      b.append(badge);
+    }
     const c = document.createElement('span');
     c.className = 'pts';
     c.textContent = String(r.total);
